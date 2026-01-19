@@ -2,17 +2,25 @@
 seeds = false
 skip-lint = false
 
+# Program IDs - These will be auto-generated on first deployment
+# Run `solana-keygen new -o target/deploy/velo_mixer-keypair.json` to generate
 [programs.localnet]
-velo_mixer = "VeLoMix1111111111111111111111111111111111111"
-velo_private_tx = "VeLoPTx1111111111111111111111111111111111111"
-velo_subscription = "VeLoSub1111111111111111111111111111111111111"
-velo_stealth = "VeLoStH1111111111111111111111111111111111111"
+velo_mixer = "11111111111111111111111111111111"
+velo_private_tx = "11111111111111111111111111111111"
+velo_subscription = "11111111111111111111111111111111"
+velo_stealth = "11111111111111111111111111111111"
 
 [programs.devnet]
-velo_mixer = "VeLoMix1111111111111111111111111111111111111"
-velo_private_tx = "VeLoPTx1111111111111111111111111111111111111"
-velo_subscription = "VeLoSub1111111111111111111111111111111111111"
-velo_stealth = "VeLoStH1111111111111111111111111111111111111"
+velo_mixer = "11111111111111111111111111111111"
+velo_private_tx = "11111111111111111111111111111111"
+velo_subscription = "11111111111111111111111111111111"
+velo_stealth = "11111111111111111111111111111111"
+
+[programs.mainnet]
+velo_mixer = "11111111111111111111111111111111"
+velo_private_tx = "11111111111111111111111111111111"
+velo_subscription = "11111111111111111111111111111111"
+velo_stealth = "11111111111111111111111111111111"
 
 [registry]
 url = "https://api.apr.dev"
@@ -23,3 +31,11 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
+[workspace]
+members = [
+    "velo_mixer",
+    "velo_private_tx",
+    "velo_subscription",
+    "velo_stealth"
+]
