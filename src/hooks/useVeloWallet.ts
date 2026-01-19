@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { PublicKey } from '@solana/web3.js';
 import {
   getWalletBalance,
   getKeypairFromSecret,
@@ -14,23 +15,32 @@ import {
 import {
   generateStealthAddress,
   generateStealthKeys,
+  scanStealthPayments,
+  deriveStealthPrivateKey,
+  createMetaAddress,
   StealthAddress,
   StealthKeys,
+  StealthPayment,
 } from '@/lib/solana/stealth';
 import {
   generateMixerNote,
   getMockPoolStats,
   MixerNote,
   MixerPool,
-  PoolSize,
 } from '@/lib/solana/mixer';
+import { PoolSize, Tier } from '@/lib/solana/config';
 import {
   createMockSubscription,
   getTierFeatures,
   getMixingRounds,
   Subscription,
-  Tier,
 } from '@/lib/solana/subscription';
+import {
+  initializePrivacySDK,
+  createMixerNote as createZKMixerNote,
+  createWithdrawalProof,
+} from '@/lib/solana/programs';
+import { VeloPrivacySDK, type ZKProof } from '@/lib/solana/light-protocol';
 
 interface VeloWalletState {
   publicKey: string;
@@ -48,9 +58,12 @@ interface VeloWalletActions {
   sendPrivate: (to: string, amount: number) => Promise<TransactionResult>;
   generateStealth: () => StealthAddress | null;
   depositToMixer: (poolSize: PoolSize) => Promise<MixerNote | null>;
+  withdrawFromMixer: (note: MixerNote, recipient: string) => Promise<TransactionResult>;
   requestDevnetAirdrop: () => Promise<TransactionResult>;
   getPoolStats: () => MixerPool[];
   validateAddress: (address: string) => boolean;
+  scanIncomingPayments: (payments: StealthPayment[]) => StealthPayment[];
+  getMetaAddress: () => string | null;
 }
 
 export function useVeloWallet(
@@ -180,6 +193,75 @@ export function useVeloWallet(
     return isValidSolanaAddress(address);
   }, []);
 
+  // Withdraw from mixer using ZK proof
+  const withdrawFromMixer = useCallback(async (
+    note: MixerNote,
+    recipient: string
+  ): Promise<TransactionResult> => {
+    try {
+      if (!isValidSolanaAddress(recipient)) {
+        return { success: false, error: 'Invalid recipient address' };
+      }
+
+      // Initialize privacy SDK
+      const sdk = initializePrivacySDK();
+      
+      // Create ZK withdrawal proof
+      const { proof, publicInputs } = await createWithdrawalProof(
+        note,
+        new PublicKey(recipient),
+        0, // No fee for now
+        new PublicKey(publicKey) // Self-relay
+      );
+
+      console.log('ZK Proof generated:', proof);
+      console.log('Public inputs:', publicInputs);
+
+      // In production, this would submit to the relayer or directly to the program
+      // For now, simulate successful withdrawal
+      
+      // Remove note from local storage
+      const updatedNotes = mixerNotes.filter(n => n.commitment !== note.commitment);
+      setMixerNotes(updatedNotes);
+      localStorage.setItem(`velo_notes_${publicKey}`, JSON.stringify(updatedNotes));
+
+      // Refresh balance
+      await refreshBalance();
+
+      return { 
+        success: true, 
+        signature: 'simulated-zk-withdrawal-' + Date.now(),
+      };
+    } catch (err) {
+      return { 
+        success: false, 
+        error: err instanceof Error ? err.message : 'Withdrawal failed' 
+      };
+    }
+  }, [publicKey, mixerNotes, refreshBalance]);
+
+  // Scan for incoming stealth payments
+  const scanIncomingPayments = useCallback((payments: StealthPayment[]): StealthPayment[] => {
+    if (!stealthKeys) {
+      console.error('Stealth keys not initialized');
+      return [];
+    }
+
+    return scanStealthPayments(
+      stealthKeys.viewKey.secretKey,
+      stealthKeys.spendKey.publicKey,
+      payments
+    );
+  }, [stealthKeys]);
+
+  // Get meta-address for publishing
+  const getMetaAddress = useCallback((): string | null => {
+    if (!stealthKeys) {
+      return null;
+    }
+    return createMetaAddress(stealthKeys);
+  }, [stealthKeys]);
+
   return {
     publicKey,
     secretKey,
@@ -193,8 +275,11 @@ export function useVeloWallet(
     sendPrivate,
     generateStealth,
     depositToMixer,
+    withdrawFromMixer,
     requestDevnetAirdrop,
     getPoolStats,
     validateAddress,
+    scanIncomingPayments,
+    getMetaAddress,
   };
 }

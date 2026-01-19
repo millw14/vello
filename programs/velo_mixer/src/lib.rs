@@ -1,5 +1,8 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
+use light_poseidon::{Poseidon, PoseidonBytesHasher, PoseidonHasher};
+use ark_bn254::Fr;
+use ark_ff::PrimeField;
 
 declare_id!("VeLoMix1111111111111111111111111111111111111");
 
@@ -399,15 +402,42 @@ fn verify_proof(
 }
 
 // ============================================================================
-// HELPERS
+// HELPERS - POSEIDON HASH (ZK-friendly)
 // ============================================================================
 
-/// Poseidon-like hash for Merkle tree (simplified)
+/// Poseidon hash for Merkle tree - ZK-friendly hash function
+/// Uses BN254 curve which is compatible with Groth16 proofs
 fn hash_pair(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
-    let mut data = [0u8; 64];
-    data[..32].copy_from_slice(left);
-    data[32..].copy_from_slice(right);
-    solana_program::keccak::hash(&data).0
+    // Initialize Poseidon hasher for 2 inputs
+    let mut poseidon = Poseidon::<Fr>::new_circom(2).expect("Failed to init Poseidon");
+    
+    // Convert bytes to field elements
+    let left_fr = Fr::from_be_bytes_mod_order(left);
+    let right_fr = Fr::from_be_bytes_mod_order(right);
+    
+    // Compute Poseidon hash
+    let hash = poseidon.hash(&[left_fr, right_fr]).expect("Hash failed");
+    
+    // Convert back to bytes
+    let mut result = [0u8; 32];
+    hash.serialize_compressed(&mut result[..]).expect("Serialize failed");
+    result
+}
+
+/// Poseidon hash for commitment: commitment = Poseidon(nullifier, secret)
+pub fn poseidon_commitment(nullifier: &[u8; 32], secret: &[u8; 32]) -> [u8; 32] {
+    hash_pair(nullifier, secret)
+}
+
+/// Poseidon hash for nullifier hash: nullifierHash = Poseidon(nullifier)
+pub fn poseidon_nullifier_hash(nullifier: &[u8; 32]) -> [u8; 32] {
+    let mut poseidon = Poseidon::<Fr>::new_circom(1).expect("Failed to init Poseidon");
+    let nullifier_fr = Fr::from_be_bytes_mod_order(nullifier);
+    let hash = poseidon.hash(&[nullifier_fr]).expect("Hash failed");
+    
+    let mut result = [0u8; 32];
+    hash.serialize_compressed(&mut result[..]).expect("Serialize failed");
+    result
 }
 
 // ============================================================================

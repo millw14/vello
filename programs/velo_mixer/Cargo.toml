@@ -1,7 +1,7 @@
 [package]
 name = "velo_mixer"
 version = "0.1.0"
-description = "Velo Privacy Protocol - Mixing Pool with Merkle Tree"
+description = "Velo Privacy Protocol - Mixing Pool with Poseidon Merkle Tree"
 edition = "2021"
 
 [lib]
@@ -19,3 +19,7 @@ default = []
 anchor-lang = "0.29.0"
 anchor-spl = "0.29.0"
 solana-program = "1.18.0"
+light-poseidon = "0.1.1"
+ark-bn254 = "0.4.0"
+ark-ff = "0.4.0"
+groth16-solana = "0.0.3"

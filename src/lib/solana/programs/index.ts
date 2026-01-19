@@ -2,20 +2,34 @@
  * Velo Program Client SDK
  * 
  * TypeScript clients for interacting with Velo on-chain programs
+ * Uses Light Protocol for ZK compression and Poseidon for ZK-friendly hashing
  */
 
 import { Connection, PublicKey, Transaction, Keypair } from '@solana/web3.js';
 import { getConnection } from '../config';
+import { 
+  poseidonHash, 
+  poseidonHash2, 
+  generateCommitment as poseidonCommitment,
+  generateNullifierHash as poseidonNullifierHash,
+  VeloPrivacySDK,
+  PoseidonMerkleTree,
+  generateMixerProof,
+  type ZKProof,
+  type MixerProofInput,
+} from '../light-protocol';
+import bs58 from 'bs58';
 
 // Program IDs (update after deployment)
+// Using System Program as placeholder - will be replaced with actual deployed program IDs
 export const PROGRAM_IDS = {
-  mixer: new PublicKey('VeLoMix1111111111111111111111111111111111111'),
-  privateTx: new PublicKey('VeLoPTx1111111111111111111111111111111111111'),
-  subscription: new PublicKey('VeLoSub1111111111111111111111111111111111111'),
-  stealth: new PublicKey('VeLoStH1111111111111111111111111111111111111'),
+  mixer: new PublicKey('11111111111111111111111111111111'),
+  privateTx: new PublicKey('11111111111111111111111111111111'),
+  subscription: new PublicKey('11111111111111111111111111111111'),
+  stealth: new PublicKey('11111111111111111111111111111111'),
 };
 
-// Pool denominations
+// Pool denominations in lamports
 export const POOL_DENOMINATIONS = {
   SMALL: 0.1,   // 0.1 SOL
   MEDIUM: 1.0,  // 1 SOL
@@ -35,7 +49,7 @@ export const SUBSCRIPTION_TIERS = {
 export type SubscriptionTier = keyof typeof SUBSCRIPTION_TIERS;
 
 // ============================================================================
-// MIXER CLIENT
+// MIXER CLIENT (Poseidon-based)
 // ============================================================================
 
 export interface MixerDepositResult {
@@ -52,53 +66,106 @@ export interface MixerWithdrawResult {
   error?: string;
 }
 
-export interface MixerNote {
-  commitment: string;
-  nullifier: string;
-  secret: string;
-  poolDenomination: PoolDenomination;
-  leafIndex: number;
-  timestamp: number;
+// Using the MixerNote type from mixer.ts
+import type { MixerNote } from '../mixer';
+
+// Global Privacy SDK instance
+let privacySDK: VeloPrivacySDK | null = null;
+
+/**
+ * Initialize the privacy SDK
+ */
+export function initializePrivacySDK(network: 'devnet' | 'mainnet' = 'devnet'): VeloPrivacySDK {
+  if (!privacySDK) {
+    privacySDK = new VeloPrivacySDK({ network });
+  }
+  return privacySDK;
 }
 
 /**
- * Generate a mixer deposit commitment
+ * Generate a mixer deposit commitment using Poseidon hash
+ * commitment = Poseidon(nullifier, secret)
  */
-export function generateMixerCommitment(): { commitment: Uint8Array; nullifier: Uint8Array; secret: Uint8Array } {
+export function generateMixerCommitment(): { 
+  commitment: Uint8Array; 
+  nullifier: Uint8Array; 
+  secret: Uint8Array;
+  commitmentHex: string;
+  nullifierHex: string;
+} {
   const nullifier = crypto.getRandomValues(new Uint8Array(32));
   const secret = crypto.getRandomValues(new Uint8Array(32));
   
-  // commitment = hash(nullifier || secret)
-  const combined = new Uint8Array(64);
-  combined.set(nullifier, 0);
-  combined.set(secret, 32);
+  // Use Poseidon hash for ZK-compatible commitment
+  const commitment = poseidonCommitment(nullifier, secret);
   
-  // Use simple hash for now (in production, use Poseidon)
-  const commitment = simpleHash(combined);
-  
-  return { commitment, nullifier, secret };
+  return { 
+    commitment, 
+    nullifier, 
+    secret,
+    commitmentHex: bs58.encode(commitment),
+    nullifierHex: bs58.encode(nullifier),
+  };
 }
 
 /**
- * Generate nullifier hash for withdrawal
+ * Generate nullifier hash using Poseidon for withdrawal
  */
 export function generateNullifierHash(nullifier: Uint8Array): Uint8Array {
-  return simpleHash(nullifier);
+  return poseidonNullifierHash(nullifier);
+}
+
+// Extended MixerNote with ZK proof data
+export interface ZKMixerNote extends MixerNote {
+  leafIndex: number;
+  proof: { pathElements: string[]; pathIndices: number[] };
 }
 
 /**
- * Simple hash function (placeholder for Poseidon)
+ * Create a complete mixer note for a deposit with ZK proof data
  */
-function simpleHash(data: Uint8Array): Uint8Array {
-  const hash = new Uint8Array(32);
-  for (let i = 0; i < data.length; i++) {
-    hash[i % 32] ^= data[i];
-  }
-  // Add some mixing
-  for (let i = 0; i < 32; i++) {
-    hash[i] = (hash[i] + hash[(i + 1) % 32] * 31) & 0xff;
-  }
-  return hash;
+export async function createMixerNote(
+  poolDenomination: PoolDenomination
+): Promise<ZKMixerNote> {
+  const sdk = initializePrivacySDK();
+  const denominationLamports = POOL_DENOMINATIONS[poolDenomination] * 1e9;
+  const deposit = await sdk.createDeposit(denominationLamports);
+  
+  return {
+    commitment: deposit.commitment,
+    nullifier: deposit.nullifier,
+    secret: deposit.secret,
+    denomination: denominationLamports,
+    depositTime: Date.now(),
+    poolId: poolDenomination,
+    leafIndex: deposit.leafIndex,
+    proof: {
+      pathElements: [],
+      pathIndices: [],
+    },
+  };
+}
+
+/**
+ * Generate withdrawal proof for mixer
+ */
+export async function createWithdrawalProof(
+  note: MixerNote | ZKMixerNote,
+  recipient: PublicKey,
+  fee: number,
+  relayer: PublicKey
+): Promise<{ proof: ZKProof; publicInputs: any }> {
+  const sdk = initializePrivacySDK();
+  // Use leafIndex if available, otherwise use 0 (will be looked up on-chain)
+  const leafIndex = 'leafIndex' in note ? note.leafIndex : 0;
+  return sdk.createWithdrawalProof(
+    note.nullifier,
+    note.secret,
+    leafIndex,
+    recipient,
+    fee,
+    relayer
+  );
 }
 
 // ============================================================================

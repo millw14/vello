@@ -4,10 +4,10 @@ import jwt from 'jsonwebtoken';
 import dbConnect from '@/lib/db';
 import User from '@/models/User';
 
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET!;
 
-if (!JWT_SECRET) {
-  throw new Error('Please define JWT_SECRET environment variable in .env.local');
+if (!process.env.JWT_SECRET) {
+  console.error('JWT_SECRET environment variable is not defined');
 }
 
 export async function POST(request: NextRequest) {

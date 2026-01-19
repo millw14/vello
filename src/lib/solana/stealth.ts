@@ -1,22 +1,33 @@
 /**
  * Stealth Address System for Velo
  * 
- * Uses Elliptic Curve Diffie-Hellman (ECDH) to generate one-time,
- * unlinkable receiving addresses.
+ * Uses Elliptic Curve Diffie-Hellman (ECDH) with Curve25519 (X25519)
+ * to generate one-time, unlinkable receiving addresses.
+ * 
+ * Cryptographic Primitives:
+ * - X25519: Elliptic Curve Diffie-Hellman key exchange
+ * - Ed25519: Digital signatures (via Solana keypairs)
+ * - Poseidon: ZK-friendly hashing for stealth address derivation
  * 
  * Flow:
- * 1. Recipient generates a view keypair and publishes the public key
- * 2. Sender generates ephemeral keypair
- * 3. Sender computes shared secret using ECDH
- * 4. Stealth address = hash(sharedSecret || recipientViewPub)
- * 5. Only recipient can scan and detect payments using their view key
+ * 1. Recipient generates view keypair (X25519) and spend keypair (Ed25519)
+ * 2. Recipient publishes view public key as "meta-address"
+ * 3. Sender generates ephemeral X25519 keypair
+ * 4. Sender computes shared secret: S = ECDH(ephemeralSecret, recipientViewPub)
+ * 5. Stealth address: P = Poseidon(S || recipientSpendPub)
+ * 6. Sender publishes ephemeral public key alongside payment
+ * 7. Recipient scans by recomputing: S' = ECDH(ephemeralPub, viewSecret)
+ * 8. If Poseidon(S' || spendPub) matches, recipient can claim using derived key
+ * 
+ * Security: Only the recipient with viewSecretKey can detect payments,
+ * and only the recipient with spendSecretKey can spend the funds.
  */
 
 import nacl from 'tweetnacl';
 import naclUtil from 'tweetnacl-util';
 import bs58 from 'bs58';
 import { Keypair, PublicKey } from '@solana/web3.js';
-import CryptoJS from 'crypto-js';
+import { poseidonHash } from './light-protocol';
 
 export interface StealthKeys {
   viewKey: {
@@ -65,28 +76,34 @@ export function generateStealthKeys(): StealthKeys {
 
 /**
  * Generate a one-time stealth address for receiving payments
- * @param recipientViewPublicKey - Recipient's published view public key
+ * Uses X25519 ECDH for key exchange and Poseidon for ZK-friendly hashing
+ * 
+ * @param recipientViewPublicKey - Recipient's published view public key (X25519)
  * @returns StealthAddress with the address, ephemeral key, and expiry
  */
 export function generateStealthAddress(recipientViewPublicKey: string): StealthAddress {
-  // Generate ephemeral keypair (sender-side, one-time use)
+  // Generate ephemeral X25519 keypair (sender-side, one-time use)
   const ephemeralKeyPair = nacl.box.keyPair();
   
-  // Decode recipient's view public key
+  // Decode recipient's view public key (X25519, 32 bytes)
   const recipientViewPub = bs58.decode(recipientViewPublicKey);
   
-  // Compute shared secret using ECDH
-  // sharedSecret = ECDH(ephemeralSecret, recipientViewPub)
+  // Validate key length
+  if (recipientViewPub.length !== 32) {
+    throw new Error('Invalid view public key length. Expected 32 bytes for X25519.');
+  }
+  
+  // Compute shared secret using X25519 ECDH
+  // sharedSecret = X25519(ephemeralSecretKey, recipientViewPub)
   const sharedSecret = nacl.box.before(recipientViewPub, ephemeralKeyPair.secretKey);
   
-  // Derive stealth address from shared secret
-  // stealthAddress = Hash(sharedSecret || recipientViewPub)
-  const combined = new Uint8Array([...sharedSecret, ...recipientViewPub]);
-  const hash = CryptoJS.SHA256(CryptoJS.lib.WordArray.create(combined as unknown as number[]));
-  const hashBytes = hexToBytes(hash.toString());
+  // Derive stealth address seed using Poseidon (ZK-friendly)
+  // stealthSeed = Poseidon(sharedSecret, recipientViewPub)
+  const stealthSeed = poseidonHash([sharedSecret, recipientViewPub]);
   
-  // Create a deterministic keypair from the hash (for Solana address)
-  const stealthKeypair = Keypair.fromSeed(hashBytes.slice(0, 32));
+  // Create a deterministic Ed25519 keypair from the Poseidon hash
+  // This keypair will control the stealth address on Solana
+  const stealthKeypair = Keypair.fromSeed(stealthSeed);
   
   return {
     address: stealthKeypair.publicKey.toBase58(),
@@ -96,8 +113,11 @@ export function generateStealthAddress(recipientViewPublicKey: string): StealthA
 }
 
 /**
- * Scan for incoming stealth payments
- * @param viewSecretKey - User's view secret key
+ * Scan for incoming stealth payments using view key
+ * Recomputes stealth addresses to detect payments belonging to this user
+ * 
+ * @param viewSecretKey - User's X25519 view secret key
+ * @param spendPublicKey - User's X25519 spend public key (used in stealth derivation)
  * @param payments - Array of potential stealth payments to scan
  * @returns Array of payments that belong to this user
  */
@@ -109,23 +129,28 @@ export function scanStealthPayments(
   const viewSecret = bs58.decode(viewSecretKey);
   const spendPub = bs58.decode(spendPublicKey);
   
+  // Validate key lengths
+  if (viewSecret.length !== 32 || spendPub.length !== 32) {
+    throw new Error('Invalid key length. Expected 32 bytes for X25519 keys.');
+  }
+  
   const matchedPayments: StealthPayment[] = [];
   
   for (const payment of payments) {
     try {
-      // Decode ephemeral public key from payment
+      // Decode ephemeral public key from payment announcement
       const ephemeralPub = bs58.decode(payment.ephemeralPublicKey);
       
-      // Compute shared secret
+      if (ephemeralPub.length !== 32) continue;
+      
+      // Recompute shared secret: S' = X25519(viewSecret, ephemeralPub)
       const sharedSecret = nacl.box.before(ephemeralPub, viewSecret);
       
-      // Derive expected stealth address
-      const combined = new Uint8Array([...sharedSecret, ...spendPub]);
-      const hash = CryptoJS.SHA256(CryptoJS.lib.WordArray.create(combined as unknown as number[]));
-      const hashBytes = hexToBytes(hash.toString());
-      const expectedKeypair = Keypair.fromSeed(hashBytes.slice(0, 32));
+      // Derive expected stealth address using Poseidon
+      const stealthSeed = poseidonHash([sharedSecret, spendPub]);
+      const expectedKeypair = Keypair.fromSeed(stealthSeed);
       
-      // Check if this payment matches
+      // Check if this payment's stealth address matches our computation
       if (expectedKeypair.publicKey.toBase58() === payment.stealthAddress) {
         matchedPayments.push(payment);
       }
@@ -140,9 +165,12 @@ export function scanStealthPayments(
 
 /**
  * Derive the private key for a stealth address to claim funds
- * @param viewSecretKey - User's view secret key  
- * @param ephemeralPublicKey - Ephemeral public key from the payment
- * @returns Keypair that can sign transactions for the stealth address
+ * This function recovers the Ed25519 keypair that controls a stealth address
+ * 
+ * @param viewSecretKey - User's X25519 view secret key  
+ * @param spendPublicKey - User's X25519 spend public key
+ * @param ephemeralPublicKey - Ephemeral public key from the payment announcement
+ * @returns Ed25519 Keypair that can sign transactions for the stealth address
  */
 export function deriveStealthPrivateKey(
   viewSecretKey: string,
@@ -153,15 +181,19 @@ export function deriveStealthPrivateKey(
   const spendPub = bs58.decode(spendPublicKey);
   const ephemeralPub = bs58.decode(ephemeralPublicKey);
   
-  // Compute shared secret
+  // Validate key lengths
+  if (viewSecret.length !== 32 || spendPub.length !== 32 || ephemeralPub.length !== 32) {
+    throw new Error('Invalid key length. All keys must be 32 bytes.');
+  }
+  
+  // Recompute shared secret: S = X25519(viewSecret, ephemeralPub)
   const sharedSecret = nacl.box.before(ephemeralPub, viewSecret);
   
-  // Derive stealth keypair
-  const combined = new Uint8Array([...sharedSecret, ...spendPub]);
-  const hash = CryptoJS.SHA256(CryptoJS.lib.WordArray.create(combined as unknown as number[]));
-  const hashBytes = hexToBytes(hash.toString());
+  // Derive stealth keypair seed using Poseidon (matches sender's computation)
+  const stealthSeed = poseidonHash([sharedSecret, spendPub]);
   
-  return Keypair.fromSeed(hashBytes.slice(0, 32));
+  // Return the Ed25519 keypair that controls the stealth address
+  return Keypair.fromSeed(stealthSeed);
 }
 
 /**
@@ -214,11 +246,51 @@ export function decryptFromStealth(
   }
 }
 
-// Helper function
-function hexToBytes(hex: string): Uint8Array {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+// ============================================================================
+// VIEW TAG OPTIMIZATION
+// ============================================================================
+
+/**
+ * Generate a view tag for efficient scanning
+ * View tags allow quick rejection of non-matching payments without full ECDH
+ * 
+ * @param sharedSecret - The ECDH shared secret
+ * @returns 1-byte view tag
+ */
+export function generateViewTag(sharedSecret: Uint8Array): number {
+  // Use first byte of Poseidon hash of shared secret as view tag
+  const hash = poseidonHash([sharedSecret]);
+  return hash[0];
+}
+
+/**
+ * Create a stealth meta-address that can be published
+ * Meta-address contains both view and spend public keys
+ */
+export function createMetaAddress(stealthKeys: StealthKeys): string {
+  const viewPub = bs58.decode(stealthKeys.viewKey.publicKey);
+  const spendPub = bs58.decode(stealthKeys.spendKey.publicKey);
+  
+  // Combine both keys: [viewPub (32 bytes) || spendPub (32 bytes)]
+  const combined = new Uint8Array(64);
+  combined.set(viewPub, 0);
+  combined.set(spendPub, 32);
+  
+  return bs58.encode(combined);
+}
+
+/**
+ * Parse a stealth meta-address
+ */
+export function parseMetaAddress(metaAddress: string): { viewPublicKey: string; spendPublicKey: string } {
+  const decoded = bs58.decode(metaAddress);
+  
+  if (decoded.length !== 64) {
+    throw new Error('Invalid meta-address length. Expected 64 bytes.');
   }
-  return bytes;
+  
+  return {
+    viewPublicKey: bs58.encode(decoded.slice(0, 32)),
+    spendPublicKey: bs58.encode(decoded.slice(32, 64)),
+  };
 }

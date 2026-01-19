@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, ReactNode } from 'react';
 import { Shield, Zap, Lock, Eye, Coins, ArrowRightLeft, Users, Settings, LogOut, Copy, Check } from 'lucide-react';
 
 interface TerminalProps {
@@ -11,7 +11,7 @@ interface TerminalProps {
 }
 
 export default function VeloTerminal({ username, publicKey, tier, onLogout }: TerminalProps) {
-  const [history, setHistory] = useState<Array<{ command: string; output: string | JSX.Element }>>([
+  const [history, setHistory] = useState<Array<{ command: string; output: string | ReactNode }>>([
     { command: '/welcome', output: getWelcomeMessage(username, publicKey, tier) },
   ]);
   const [currentCommand, setCurrentCommand] = useState('');
@@ -27,7 +27,7 @@ export default function VeloTerminal({ username, publicKey, tier, onLogout }: Te
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const commands: Record<string, () => string | JSX.Element> = {
+  const commands: Record<string, () => string | ReactNode> = {
     'help': () => `
 ╔══════════════════════════════════════════════════════════════════╗
 ║                    VELO COMMAND REFERENCE                        ║
