@@ -1,69 +1,69 @@
 /**
  * Trusted Setup Script for Velo Mixer Circuit
- * 
- * This script performs the Powers of Tau ceremony and circuit-specific setup.
- * In production, the Powers of Tau should come from a multi-party computation ceremony.
- * 
- * Steps:
- * 1. Generate Powers of Tau (or download from Hermez/Zcash ceremony)
- * 2. Prepare phase 2 (circuit-specific)
- * 3. Contribute randomness
- * 4. Generate final zkey and verification key
+ * Downloads pre-computed Powers of Tau and generates circuit-specific keys
  */
 
 const snarkjs = require("snarkjs");
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
 
 const BUILD_DIR = path.join(__dirname, "..", "build");
 const R1CS_FILE = path.join(BUILD_DIR, "withdraw.r1cs");
-const PTAU_FILE = path.join(BUILD_DIR, "powersOfTau28_hez_final_20.ptau");
+const PTAU_FILE = path.join(BUILD_DIR, "pot15_final.ptau");
 const ZKEY_0_FILE = path.join(BUILD_DIR, "withdraw_0.zkey");
 const ZKEY_FINAL_FILE = path.join(BUILD_DIR, "withdraw_final.zkey");
 const VKEY_FILE = path.join(BUILD_DIR, "verification_key.json");
 
+// Use smaller ptau for faster setup (pot15 supports up to 2^15 constraints)
+// For production, use pot20 or higher
+const PTAU_URL = "https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_15.ptau";
+
+function downloadFile(url, dest) {
+    return new Promise((resolve, reject) => {
+        console.log(`   Downloading from ${url}...`);
+        const file = fs.createWriteStream(dest);
+        
+        https.get(url, (response) => {
+            if (response.statusCode === 301 || response.statusCode === 302) {
+                // Handle redirect
+                downloadFile(response.headers.location, dest).then(resolve).catch(reject);
+                return;
+            }
+            
+            const totalBytes = parseInt(response.headers['content-length'], 10);
+            let downloadedBytes = 0;
+            
+            response.on('data', (chunk) => {
+                downloadedBytes += chunk.length;
+                const percent = ((downloadedBytes / totalBytes) * 100).toFixed(1);
+                process.stdout.write(`\r   Progress: ${percent}%`);
+            });
+            
+            response.pipe(file);
+            
+            file.on('finish', () => {
+                file.close();
+                console.log('\n   Download complete!');
+                resolve();
+            });
+        }).on('error', (err) => {
+            fs.unlink(dest, () => {}); // Delete the file on error
+            reject(err);
+        });
+    });
+}
+
 async function downloadPTAU() {
     console.log("📥 Downloading Powers of Tau file...");
-    console.log("   Using Hermez ceremony (20 powers = supports 2^20 constraints)");
     
-    // In production, download from:
-    // https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_20.ptau
-    
-    // For development, we'll generate a new one (NOT secure for production!)
-    if (!fs.existsSync(PTAU_FILE)) {
-        console.log("⚠️  Generating development PTAU (NOT for production!)");
-        
-        const ptauTmp = path.join(BUILD_DIR, "ptau_tmp.ptau");
-        
-        // Start new ceremony
-        await snarkjs.powersOfTau.newAccumulator(
-            snarkjs.curves.bn128,
-            20, // 2^20 constraints
-            ptauTmp
-        );
-        
-        // Contribute randomness
-        await snarkjs.powersOfTau.contribute(
-            ptauTmp,
-            path.join(BUILD_DIR, "ptau_contribute.ptau"),
-            "velo-dev-contribution",
-            "random-entropy-" + Date.now()
-        );
-        
-        // Prepare phase 2
-        await snarkjs.powersOfTau.preparePhase2(
-            path.join(BUILD_DIR, "ptau_contribute.ptau"),
-            PTAU_FILE
-        );
-        
-        // Clean up
-        fs.unlinkSync(ptauTmp);
-        fs.unlinkSync(path.join(BUILD_DIR, "ptau_contribute.ptau"));
-        
-        console.log("✅ Development PTAU generated");
-    } else {
-        console.log("✅ PTAU file exists");
+    if (fs.existsSync(PTAU_FILE)) {
+        console.log("✅ PTAU file already exists, skipping download");
+        return;
     }
+    
+    await downloadFile(PTAU_URL, PTAU_FILE);
+    console.log("✅ PTAU downloaded successfully");
 }
 
 async function generateZKey() {
@@ -71,7 +71,7 @@ async function generateZKey() {
     
     // Check if r1cs exists
     if (!fs.existsSync(R1CS_FILE)) {
-        console.error("❌ R1CS file not found. Run 'npm run compile' first.");
+        console.error("❌ R1CS file not found. Run circuit compilation first.");
         process.exit(1);
     }
     
@@ -94,7 +94,9 @@ async function generateZKey() {
     fs.writeFileSync(VKEY_FILE, JSON.stringify(vKey, null, 2));
     
     // Clean up intermediate file
-    fs.unlinkSync(ZKEY_0_FILE);
+    if (fs.existsSync(ZKEY_0_FILE)) {
+        fs.unlinkSync(ZKEY_0_FILE);
+    }
     
     console.log("✅ Proving key generated:", ZKEY_FINAL_FILE);
     console.log("✅ Verification key exported:", VKEY_FILE);
@@ -119,11 +121,11 @@ async function main() {
         console.log("  - build/withdraw_final.zkey (proving key)");
         console.log("  - build/verification_key.json (verification key)");
         console.log("\n⚠️  For production:");
-        console.log("  1. Use Powers of Tau from a trusted ceremony");
+        console.log("  1. Use Powers of Tau with more powers (pot20+)");
         console.log("  2. Run multi-party computation for phase 2");
-        console.log("  3. Verify the ceremony transcript");
     } catch (error) {
         console.error("❌ Setup failed:", error.message);
+        console.error(error.stack);
         process.exit(1);
     }
 }

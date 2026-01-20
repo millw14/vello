@@ -3,6 +3,7 @@ pragma circom 2.1.6;
 include "circomlib/circuits/poseidon.circom";
 include "circomlib/circuits/bitify.circom";
 include "circomlib/circuits/switcher.circom";
+include "circomlib/circuits/comparators.circom";
 
 // Merkle tree inclusion proof verifier
 // Verifies that a leaf is part of a Merkle tree with given root
@@ -91,14 +92,4 @@ template IsInSet(n) {
     isIn <== isZero.out;
 }
 
-template IsZero() {
-    signal input in;
-    signal output out;
-    
-    signal inv;
-    
-    inv <-- in != 0 ? 1/in : 0;
-    
-    out <== -in * inv + 1;
-    in * out === 0;
-}
+// Using IsZero from circomlib/circuits/comparators.circom
