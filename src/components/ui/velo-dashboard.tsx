@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react';
 import { BentoItem, BentoGrid } from './terminal-bento-grid';
 import { 
   Copy, Check, LogOut, ArrowRight, 
-  RefreshCw, Eye, Zap, X, Loader2, Download
+  RefreshCw, Eye, Zap, X, Loader2, Download, Lock
 } from 'lucide-react';
 import { useVeloWallet } from '@/hooks/useVeloWallet';
 import { VELO_CONSTANTS, Tier, PoolSize } from '@/lib/solana/config';
 import { StealthAddress } from '@/lib/solana/stealth';
 import { MixerPool } from '@/lib/solana/mixer';
+import { ConfidentialPanel } from '@/components/confidential-panel';
 
 interface DashboardProps {
   username: string;
@@ -19,7 +20,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type ModalType = 'transfer' | 'mix' | 'stealth' | 'deposit' | 'tier' | 'airdrop' | null;
+type ModalType = 'transfer' | 'mix' | 'stealth' | 'deposit' | 'tier' | 'airdrop' | 'confidential' | null;
 
 export default function VeloDashboard({ username, publicKey, secretKey, tier, onLogout }: DashboardProps) {
   const [copied, setCopied] = useState(false);
@@ -216,7 +217,7 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
             {/* Quick Actions */}
             <BentoItem className="col-span-2">
               <h2 className="text-2xl md:text-3xl mb-4">{'>'} QUICK_ACTIONS</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <button 
                   onClick={() => setActiveModal('transfer')}
                   className="terminal-btn py-4 flex flex-col items-center gap-2"
@@ -237,6 +238,13 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
                 >
                   <Eye className="w-6 h-6" />
                   <span>STEALTH</span>
+                </button>
+                <button 
+                  onClick={() => setActiveModal('confidential')}
+                  className="terminal-btn py-4 flex flex-col items-center gap-2 border-purple-500/50"
+                >
+                  <Lock className="w-6 h-6 text-purple-400" />
+                  <span>ENCRYPT</span>
                 </button>
                 <button 
                   onClick={() => setActiveModal('tier')}
@@ -306,6 +314,12 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
               wallet={wallet}
               onLog={addLog}
               onClose={() => setActiveModal(null)}
+            />
+          )}
+          {activeModal === 'confidential' && (
+            <ConfidentialModal 
+              wallet={wallet}
+              onLog={addLog}
             />
           )}
         </TerminalModal>
@@ -842,6 +856,34 @@ function AirdropModal({
           Note: Public RPC has strict rate limits. Web faucet is more reliable.
         </p>
       </div>
+    </div>
+  );
+}
+
+// Confidential Transfer Modal (Token-2022 encrypted amounts)
+function ConfidentialModal({ 
+  wallet,
+  onLog,
+}: { 
+  wallet: ReturnType<typeof useVeloWallet>;
+  onLog: (type: string, message: string) => void;
+}) {
+  return (
+    <div className="max-w-lg">
+      <h2 className="text-2xl mb-2">{'>'} CONFIDENTIAL_TRANSFERS</h2>
+      <p className="text-terminal-dim text-sm mb-4">
+        Token-2022 encrypted amounts - both users need Velo accounts
+      </p>
+      <ConfidentialPanel
+        confidentialAccount={wallet.confidentialAccount}
+        confidentialBalance={wallet.confidentialBalance}
+        solBalance={wallet.balance.sol}
+        initConfidentialAccount={wallet.initConfidentialAccount}
+        depositConfidential={wallet.depositConfidential}
+        sendConfidential={wallet.sendConfidential}
+        withdrawConfidential={wallet.withdrawConfidential}
+        lookupVeloAddress={wallet.lookupVeloAddress}
+      />
     </div>
   );
 }

@@ -529,6 +529,108 @@ export async function sendPrivateAuto(
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// STEALTH TRANSFERS (Maximum Privacy - Recipient is Hidden)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Withdraw from mixer to a stealth address
+ * This hides both the sender (mixer) AND the recipient (stealth)
+ */
+export async function withdrawToStealthOnChain(
+  connection: Connection,
+  feePayer: Keypair,
+  note: VeloNote | MixerNote,
+  recipientMetaAddress: string
+): Promise<{ 
+  success: boolean; 
+  signature?: string;
+  stealthInfo?: {
+    stealthAddress: string;
+    ephemeralPublicKey: string;
+  };
+  error?: string 
+}> {
+  try {
+    const poolSize = note.poolSize || getPoolSizeFromDenomination(note.denomination);
+    
+    // Generate stealth address from recipient's meta-address
+    // Meta-address format: "velo:spend_pub:view_pub"
+    const parts = recipientMetaAddress.split(':');
+    if (parts.length !== 3 || parts[0] !== 'velo') {
+      return { success: false, error: 'Invalid meta-address format. Expected velo:spend:view' };
+    }
+    
+    const spendPub = bs58.decode(parts[1]);
+    const viewPub = bs58.decode(parts[2]);
+    
+    // Generate ephemeral keypair for this transaction
+    const ephemeral = nacl.box.keyPair();
+    
+    // Derive stealth address: S = spend_pub + H(ephemeral_priv * view_pub) * G
+    // Simplified: just use spend_pub XOR hash(shared_secret) for demo
+    const sharedSecret = nacl.box.before(viewPub, ephemeral.secretKey);
+    const hash = nacl.hash(sharedSecret).slice(0, 32);
+    
+    // Create stealth address (simplified - in production use proper EC math)
+    const stealthBytes = new Uint8Array(32);
+    for (let i = 0; i < 32; i++) {
+      stealthBytes[i] = spendPub[i] ^ hash[i];
+    }
+    const stealthKeypair = Keypair.fromSeed(nacl.hash(stealthBytes).slice(0, 32));
+    
+    console.log('🔒 Stealth Transfer');
+    console.log('   Pool:', poolSize);
+    console.log('   Stealth address:', stealthKeypair.publicKey.toBase58().slice(0, 16) + '...');
+    console.log('   Ephemeral key:', bs58.encode(ephemeral.publicKey).slice(0, 16) + '...');
+    
+    // Withdraw from mixer to stealth address
+    const nullifierBytes = bs58.decode(note.nullifier);
+    
+    const withdrawTx = new Transaction();
+    withdrawTx.add(createWithdrawTestInstruction(
+      stealthKeypair.publicKey, 
+      nullifierBytes, 
+      poolSize
+    ));
+    
+    const signature = await sendAndConfirmTransaction(
+      connection,
+      withdrawTx,
+      [feePayer],
+      { commitment: 'confirmed' }
+    );
+    
+    console.log('   ✓ Funds sent to stealth address');
+    console.log('   Signature:', signature.slice(0, 20) + '...');
+    
+    // Store ephemeral public key for recipient to scan
+    // In production, this would be published to an announcement contract
+    const stealthInfo = {
+      stealthAddress: stealthKeypair.publicKey.toBase58(),
+      ephemeralPublicKey: bs58.encode(ephemeral.publicKey),
+    };
+    
+    // Save to localStorage (in production, announce on-chain)
+    const announcements = JSON.parse(localStorage.getItem('velo_stealth_announcements') || '[]');
+    announcements.push({
+      ...stealthInfo,
+      timestamp: Date.now(),
+      amount: note.denomination,
+    });
+    localStorage.setItem('velo_stealth_announcements', JSON.stringify(announcements));
+    
+    return { 
+      success: true, 
+      signature,
+      stealthInfo,
+    };
+  } catch (error: any) {
+    console.error('Stealth transfer failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 // Export legacy names for compatibility
 export const MIXER_PROGRAM_ID = VELO_PROGRAM_ID;
 export const generateMixerNote = generateVeloNote;
