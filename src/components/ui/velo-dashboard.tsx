@@ -343,34 +343,42 @@ function TransferModal({
   onLog: (type: string, message: string) => void;
 }) {
   const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [selectedNote, setSelectedNote] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [result, setResult] = useState<{ success: boolean; message: string; signature?: string } | null>(null);
+
+  // Get available mixer notes grouped by denomination
+  const notesByDenom = wallet.mixerNotes.reduce((acc, note) => {
+    const solAmount = note.denomination / 1e9;
+    if (!acc[solAmount]) acc[solAmount] = [];
+    acc[solAmount].push(note);
+    return acc;
+  }, {} as Record<number, typeof wallet.mixerNotes>);
+  
+  const availableAmounts = Object.keys(notesByDenom).map(Number).sort((a, b) => a - b);
 
   const handleTransfer = async () => {
-    if (!recipient || !amount) return;
+    if (!recipient || selectedNote === null) return;
     
     if (!wallet.validateAddress(recipient)) {
       setResult({ success: false, message: 'Invalid recipient address' });
       return;
     }
 
-    const amountNum = parseFloat(amount);
-    if (amountNum <= 0 || amountNum > wallet.balance.sol) {
-      setResult({ success: false, message: 'Invalid amount' });
-      return;
-    }
-
     setIsLoading(true);
-    onLog('INFO', `Initiating private transfer of ${amount} SOL...`);
+    onLog('INFO', `Initiating private transfer of ${selectedNote} SOL via mixer...`);
 
-    const txResult = await wallet.sendPrivate(recipient, amountNum);
+    const txResult = await wallet.sendPrivate(recipient, selectedNote);
     
     if (txResult.success) {
-      setResult({ success: true, message: `Transfer complete! Sig: ${txResult.signature?.slice(0, 20)}...` });
-      onLog('OK', `Transfer complete: ${txResult.signature?.slice(0, 20)}...`);
+      setResult({ 
+        success: true, 
+        message: `Private transfer complete!`,
+        signature: txResult.signature 
+      });
+      onLog('OK', `Private transfer complete: ${txResult.signature?.slice(0, 16)}...`);
       setRecipient('');
-      setAmount('');
+      setSelectedNote(null);
     } else {
       setResult({ success: false, message: txResult.error || 'Transfer failed' });
       onLog('ERROR', txResult.error || 'Transfer failed');
@@ -383,61 +391,96 @@ function TransferModal({
     <div>
       <h2 className="text-2xl mb-6">{'>'} PRIVATE_TRANSFER</h2>
       <div className="space-y-4">
-        <div>
-          <label className="text-terminal-dim text-sm block mb-2">RECIPIENT_ADDRESS:</label>
-          <input 
-            type="text" 
-            value={recipient}
-            onChange={(e) => setRecipient(e.target.value)}
-            placeholder="Enter Solana address..."
-            className="terminal-input"
-          />
-        </div>
-        <div>
-          <label className="text-terminal-dim text-sm block mb-2">AMOUNT_SOL:</label>
-          <input 
-            type="number" 
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            step="0.001"
-            max={wallet.balance.sol}
-            className="terminal-input"
-          />
-          <p className="text-terminal-dim text-xs mt-1">
-            Available: {wallet.balance.sol.toFixed(4)} SOL
-          </p>
-        </div>
-        <div className="pt-4 border-t border-terminal">
-          <p className="text-terminal-dim text-sm mb-4">
-            Privacy: {tier.toUpperCase()} tier ({VELO_CONSTANTS.TIER_CONFIG[tier as Tier]?.mixingRounds || 1}x mixing)
-          </p>
-          <button 
-            onClick={handleTransfer}
-            disabled={isLoading || !recipient || !amount}
-            className="terminal-btn-filled w-full py-3 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                PROCESSING...
-              </>
-            ) : (
-              <>{'>'} EXECUTE_TRANSFER</>
-            )}
-          </button>
-        </div>
+        {/* Show available mixer notes */}
+        {wallet.mixerNotes.length > 0 ? (
+          <>
+            <div>
+              <label className="text-terminal-dim text-sm block mb-2">SELECT_AMOUNT (from mixer):</label>
+              <div className="grid grid-cols-3 gap-2">
+                {availableAmounts.map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => setSelectedNote(amt)}
+                    className={`terminal-btn py-3 text-center ${
+                      selectedNote === amt ? 'border-terminal-cyan bg-terminal-cyan/10' : ''
+                    }`}
+                  >
+                    <span className="text-lg">{amt}</span>
+                    <span className="text-xs text-terminal-dim block">SOL</span>
+                    <span className="text-xs text-terminal-dim">({notesByDenom[amt].length} note{notesByDenom[amt].length > 1 ? 's' : ''})</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            <div>
+              <label className="text-terminal-dim text-sm block mb-2">RECIPIENT_ADDRESS:</label>
+              <input 
+                type="text" 
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                placeholder="Enter Solana address..."
+                className="terminal-input"
+              />
+            </div>
+            
+            <div className="pt-4 border-t border-terminal">
+              <p className="text-terminal-dim text-sm mb-2">
+                🔒 Using mixer for unlinkable transfer
+              </p>
+              <p className="text-terminal-cyan text-xs mb-4">
+                Recipient will receive {selectedNote || '?'} SOL with no link to your wallet
+              </p>
+              <button 
+                onClick={handleTransfer}
+                disabled={isLoading || !recipient || selectedNote === null}
+                className="terminal-btn-filled w-full py-3 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    MIXING...
+                  </>
+                ) : (
+                  <>{'>'} SEND_PRIVATE ({selectedNote || '?'} SOL)</>
+                )}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-terminal-dim mb-4">No mixer notes available</p>
+            <p className="text-sm text-terminal-cyan mb-4">
+              To send privately, first deposit to a mixer pool.<br/>
+              Then you can withdraw to any address anonymously.
+            </p>
+            <p className="text-xs text-terminal-dim">
+              Go to MIX → Select pool → Deposit
+            </p>
+          </div>
+        )}
+        
         {result && (
-          <p className={`text-center text-sm ${result.success ? 'status-online' : 'text-[#ff4444]'}`}>
-            [{result.success ? 'OK' : 'ERROR'}] {result.message}
-          </p>
+          <div className={`text-center text-sm ${result.success ? 'status-online' : 'text-[#ff4444]'}`}>
+            <p>[{result.success ? 'OK' : 'ERROR'}] {result.message}</p>
+            {result.success && result.signature && (
+              <a 
+                href={`https://solscan.io/tx/${result.signature}?cluster=devnet`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-terminal-cyan hover:underline text-xs mt-2 inline-block"
+              >
+                🔗 View on Solscan →
+              </a>
+            )}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// Mix Modal with real functionality
+// Mix Modal with real on-chain functionality - Multi-Pool Support
 function MixModal({ 
   wallet,
   tier,
@@ -447,33 +490,79 @@ function MixModal({
   tier: string;
   onLog: (type: string, message: string) => void;
 }) {
-  const [selectedPool, setSelectedPool] = useState<PoolSize | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [note, setNote] = useState<{ commitment: string } | null>(null);
+  const [loadingPool, setLoadingPool] = useState<string | null>(null);
+  const [depositResult, setDepositResult] = useState<{ 
+    note: { commitment: string; nullifier: string; secret: string; poolSize: string }; 
+    signature: string 
+  } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const pools = wallet.getPoolStats();
   const mixRounds = VELO_CONSTANTS.TIER_CONFIG[tier as Tier]?.mixingRounds || 1;
 
-  const handleDeposit = async (poolSize: PoolSize) => {
-    const denomination = VELO_CONSTANTS.POOL_DENOMINATIONS[poolSize] / 1e9;
+  // Map pool denominations to pool size keys
+  const poolSizeMap: { [key: number]: 'SMALL' | 'MEDIUM' | 'LARGE' } = {
+    100000000: 'SMALL',     // 0.1 SOL
+    1000000000: 'MEDIUM',   // 1 SOL
+    10000000000: 'LARGE',   // 10 SOL
+  };
+
+  const handleDeposit = async (poolDenomination: number) => {
+    const solAmount = poolDenomination / 1e9;
+    const poolSize = poolSizeMap[poolDenomination];
     
-    if (wallet.balance.sol < denomination) {
-      onLog('ERROR', 'Insufficient balance for mixer deposit');
+    if (!poolSize) {
+      onLog('ERROR', 'Invalid pool denomination');
+      return;
+    }
+    
+    if (wallet.balance.sol < solAmount + 0.01) { // Include fee buffer
+      onLog('ERROR', `Insufficient balance. Need ${solAmount} SOL + fees`);
+      setError(`Insufficient balance. Need ${solAmount} SOL + fees`);
       return;
     }
 
     setIsLoading(true);
-    setSelectedPool(poolSize);
-    onLog('INFO', `Creating mixer note for ${denomination} SOL pool...`);
+    setLoadingPool(poolSize);
+    setError(null);
+    onLog('INFO', `Depositing ${solAmount} SOL to ${poolSize} mixer pool...`);
 
-    const mixerNote = await wallet.depositToMixer(poolSize);
-    
-    if (mixerNote) {
-      setNote({ commitment: mixerNote.commitment });
-      onLog('OK', `Mixer note created: ${mixerNote.commitment.slice(0, 16)}...`);
+    try {
+      const result = await wallet.depositToMixer(poolSize);
+      
+      if (result) {
+        setDepositResult({ 
+          note: {
+            commitment: result.note.commitment,
+            nullifier: result.note.nullifier,
+            secret: result.note.secret,
+            poolSize: result.note.poolSize,
+          },
+          signature: result.signature,
+        });
+        onLog('OK', `Deposit successful! Save your note to withdraw later.`);
+      } else {
+        const errMsg = wallet.error || 'Deposit failed. Check console for details.';
+        setError(errMsg);
+        onLog('ERROR', errMsg);
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Deposit failed';
+      setError(message);
+      onLog('ERROR', message);
     }
 
     setIsLoading(false);
+    setLoadingPool(null);
+  };
+
+  const copyNote = () => {
+    if (depositResult) {
+      const noteData = JSON.stringify(depositResult.note, null, 2);
+      navigator.clipboard.writeText(noteData);
+      onLog('INFO', 'Note copied to clipboard');
+    }
   };
 
   return (
@@ -481,40 +570,82 @@ function MixModal({
       <h2 className="text-2xl mb-6">{'>'} MIXING_POOL</h2>
       <div className="space-y-4">
         <p className="text-terminal-dim">Select pool denomination:</p>
+        
+        {/* Show available pools - all three now active! */}
         {pools.map((pool) => {
-          const poolSize = pool.denomination === VELO_CONSTANTS.POOL_DENOMINATIONS.SMALL ? 'SMALL' :
-                          pool.denomination === VELO_CONSTANTS.POOL_DENOMINATIONS.MEDIUM ? 'MEDIUM' : 'LARGE';
           const solAmount = pool.denomination / 1e9;
+          const poolSize = poolSizeMap[pool.denomination];
+          const canAfford = wallet.balance.sol >= solAmount + 0.01;
+          const isThisLoading = loadingPool === poolSize;
           
           return (
             <button 
               key={pool.id}
-              onClick={() => handleDeposit(poolSize as PoolSize)}
-              disabled={isLoading || wallet.balance.sol < solAmount}
-              className="terminal-btn w-full py-4 text-left flex justify-between items-center disabled:opacity-50"
+              onClick={() => handleDeposit(pool.denomination)}
+              disabled={isLoading || !canAfford}
+              className={`terminal-btn w-full py-4 text-left flex justify-between items-center 
+                ${!canAfford ? 'opacity-50' : ''}
+                ${isThisLoading ? 'animate-pulse border-terminal-cyan' : ''}`}
             >
-              <span>{solAmount} SOL</span>
+              <span className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${canAfford ? 'bg-terminal' : 'bg-gray-500'}`} />
+                {solAmount} SOL
+                {poolSize && <span className="text-xs text-terminal-dim">({poolSize})</span>}
+              </span>
               <span className="text-terminal-dim text-sm">
-                {pool.activeNotes} notes • ~{Math.round(pool.totalDeposits / pool.activeNotes * 2)} min
+                {isThisLoading ? 'DEPOSITING...' : 'ACTIVE'}
               </span>
             </button>
           );
         })}
+        
         <div className="pt-4 border-t border-terminal">
           <p className="text-terminal-dim text-sm">
             Your tier: {mixRounds}x mixing rounds
           </p>
         </div>
-        {note && (
-          <div className="p-3 bg-[rgba(0,255,157,0.1)] border border-terminal">
-            <p className="text-sm text-terminal-dim mb-1">COMMITMENT:</p>
-            <code className="text-xs text-terminal-cyan break-all">{note.commitment}</code>
-            <p className="text-xs text-terminal-dim mt-2">Save this commitment to withdraw later!</p>
+
+        {error && (
+          <div className="p-3 bg-red-500/10 border border-red-500 text-red-400">
+            <p className="text-sm">{error}</p>
           </div>
         )}
+        
+        {depositResult && (
+          <div className="p-3 bg-[rgba(0,255,157,0.1)] border border-terminal">
+            <p className="text-sm text-terminal-dim mb-1">✅ DEPOSIT SUCCESSFUL ({depositResult.note.poolSize} pool):</p>
+            <code className="text-xs text-terminal-cyan break-all">{depositResult.note.commitment.slice(0, 32)}...</code>
+            
+            <a 
+              href={`https://solscan.io/tx/${depositResult.signature}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-terminal-cyan hover:underline text-xs mt-2 block"
+            >
+              🔗 View transaction on Solscan →
+            </a>
+            
+            <p className="text-xs text-yellow-400 mt-2">
+              ⚠️ Note saved! Go to SEND tab to transfer privately.
+            </p>
+            <button 
+              onClick={copyNote}
+              className="terminal-btn w-full mt-2 py-2 text-sm"
+            >
+              {'>'} COPY_FULL_NOTE (backup)
+            </button>
+          </div>
+        )}
+        
         {wallet.balance.sol === 0 && (
           <p className="text-center text-terminal-dim text-sm">
             [INFO] Deposit funds to join mixer pool
+          </p>
+        )}
+
+        {isLoading && (
+          <p className="text-center text-terminal-cyan text-sm animate-pulse">
+            [PROCESSING] Sending deposit transaction...
           </p>
         )}
       </div>

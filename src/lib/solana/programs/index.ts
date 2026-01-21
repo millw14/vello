@@ -22,6 +22,9 @@ import bs58 from 'bs58';
 
 // Program IDs - Deployed to Devnet
 export const PROGRAM_IDS = {
+  // New Velo Privacy Protocol with ZK support
+  velo: new PublicKey('AQgeVtAYEvigMbBW5gEiK4voELjFB94fDY9cFZqKHgZ8'),
+  // Legacy mixer (kept for compatibility)
   mixer: new PublicKey('DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc'),
   // These still need to be deployed:
   privateTx: new PublicKey('11111111111111111111111111111111'),
