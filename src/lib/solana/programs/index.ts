@@ -20,10 +20,10 @@ import {
 } from '../light-protocol';
 import bs58 from 'bs58';
 
-// Program IDs (update after deployment)
-// Using System Program as placeholder - will be replaced with actual deployed program IDs
+// Program IDs - Deployed to Devnet
 export const PROGRAM_IDS = {
-  mixer: new PublicKey('11111111111111111111111111111111'),
+  mixer: new PublicKey('DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc'),
+  // These still need to be deployed:
   privateTx: new PublicKey('11111111111111111111111111111111'),
   subscription: new PublicKey('11111111111111111111111111111111'),
   stealth: new PublicKey('11111111111111111111111111111111'),

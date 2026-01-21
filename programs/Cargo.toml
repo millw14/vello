@@ -5,6 +5,7 @@ members = [
     "velo_subscription",
     "velo_stealth"
 ]
+resolver = "2"
 
 [profile.release]
 overflow-checks = true

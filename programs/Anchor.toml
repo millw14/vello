@@ -5,22 +5,21 @@ anchor_version = "0.32.1"
 seeds = false
 skip-lint = false
 
-# Program IDs - These will be auto-generated on first deployment
-# Run `solana-keygen new -o target/deploy/velo_mixer-keypair.json` to generate
+# Program IDs - Deployed to Devnet on 2026-01-21
 [programs.localnet]
-velo_mixer = "11111111111111111111111111111111"
+velo_mixer = "DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc"
 velo_private_tx = "11111111111111111111111111111111"
 velo_subscription = "11111111111111111111111111111111"
 velo_stealth = "11111111111111111111111111111111"
 
 [programs.devnet]
-velo_mixer = "11111111111111111111111111111111"
+velo_mixer = "DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc"
 velo_private_tx = "11111111111111111111111111111111"
 velo_subscription = "11111111111111111111111111111111"
 velo_stealth = "11111111111111111111111111111111"
 
 [programs.mainnet]
-velo_mixer = "11111111111111111111111111111111"
+velo_mixer = "DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc"
 velo_private_tx = "11111111111111111111111111111111"
 velo_subscription = "11111111111111111111111111111111"
 velo_stealth = "11111111111111111111111111111111"

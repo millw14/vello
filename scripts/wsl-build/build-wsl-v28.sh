@@ -1,6 +1,41 @@
+#!/bin/bash
+set -e
+
+cd ~
+
+echo "=== Cleaning up ==="
+rm -rf ~/velo_build ~/.cargo/registry/cache/* ~/.cargo/registry/src/*
+mkdir -p ~/velo_build
+cd ~/velo_build
+
+echo "=== Creating minimal mixer with anchor 0.28.0 ==="
+mkdir -p programs/velo_mixer/src
+
+cat > programs/velo_mixer/Cargo.toml << 'EOF'
+[package]
+name = "velo_mixer"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "velo_mixer"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.28.0"
+EOF
+
+cat > programs/velo_mixer/src/lib.rs << 'EOF'
 use anchor_lang::prelude::*;
 
-declare_id!("DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc");
+declare_id!("GKNcUmNacSJo4S2Kq3DuYRYRGw3sNUfJ4tyqd198t6vQ");
 
 #[program]
 pub mod velo_mixer {
@@ -88,3 +123,44 @@ pub struct MixerPool {
     pub next_index: u32,
     pub deposit_amount: u64,
 }
+EOF
+
+cat > Cargo.toml << 'EOF'
+[workspace]
+members = ["programs/velo_mixer"]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+EOF
+
+cat > Anchor.toml << 'EOF'
+[features]
+seeds = false
+skip-lint = false
+
+[programs.localnet]
+velo_mixer = "GKNcUmNacSJo4S2Kq3DuYRYRGw3sNUfJ4tyqd198t6vQ"
+
+[programs.devnet]
+velo_mixer = "GKNcUmNacSJo4S2Kq3DuYRYRGw3sNUfJ4tyqd198t6vQ"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+EOF
+
+echo "=== Generating lockfile ==="
+cargo generate-lockfile
+sed -i 's/version = 4/version = 3/' Cargo.lock
+
+echo "=== Checking for constant_time_eq ==="
+grep "constant_time_eq" Cargo.lock || echo "Not found - good!"
+
+echo "=== Building ==="
+anchor build
+
+echo "=== SUCCESS ==="
+ls -la target/deploy/
