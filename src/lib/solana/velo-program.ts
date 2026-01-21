@@ -8,6 +8,9 @@
  * - ZK-ready architecture with Merkle tree tracking
  * - Nullifier-based double-spend prevention  
  * - Three pool denominations: 0.1, 1, 10 SOL
+ * - Confidential transfers with encrypted amounts
+ * - Decoy system for traffic analysis resistance
+ * - Automatic private transfer to any wallet (receiver doesn't need Velo!)
  */
 
 import {
@@ -196,6 +199,50 @@ export function createDepositInstruction(
     keys: [
       { pubkey: poolPDA, isSigner: false, isWritable: true },
       { pubkey: vaultPDA, isSigner: false, isWritable: true },
+      { pubkey: depositor, isSigner: true, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: VELO_PROGRAM_ID,
+    data,
+  });
+}
+
+/**
+ * Find confidential note PDA
+ */
+function findConfidentialNotePDA(commitment: Uint8Array): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [new TextEncoder().encode('confidential_note'), commitment],
+    VELO_PROGRAM_ID
+  )[0];
+}
+
+/**
+ * Create confidential deposit instruction (with encrypted amount)
+ * Observer sees encrypted blob instead of actual amount
+ */
+export function createConfidentialDepositInstruction(
+  depositor: PublicKey,
+  commitment: Uint8Array,
+  encryptedAmount: Uint8Array, // 128 bytes fixed size
+  poolSize: PoolSize
+): TransactionInstruction {
+  const { poolPDA, vaultPDA } = getPoolPDAs(poolSize);
+  const confidentialNotePDA = findConfidentialNotePDA(commitment);
+  
+  const discriminator = getDiscriminator('confidential_deposit');
+  
+  // Pad encrypted amount to 128 bytes
+  const paddedEncryptedAmount = new Uint8Array(128);
+  paddedEncryptedAmount.set(encryptedAmount.slice(0, 128), 0);
+  
+  const data = Buffer.from(concatBytes(discriminator, commitment, paddedEncryptedAmount));
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: poolPDA, isSigner: false, isWritable: true },
+      { pubkey: vaultPDA, isSigner: false, isWritable: true },
+      { pubkey: confidentialNotePDA, isSigner: false, isWritable: true },
       { pubkey: depositor, isSigner: true, isWritable: true },
       { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
     ],
