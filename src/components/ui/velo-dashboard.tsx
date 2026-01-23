@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { BentoItem, BentoGrid } from './terminal-bento-grid';
-import { 
-  Copy, Check, LogOut, ArrowRight, 
-  RefreshCw, Eye, Zap, X, Loader2, Download, Lock
+import {
+  Copy, Check, LogOut, ArrowRight,
+  RefreshCw, Eye, Zap, X, Loader2, Download, Lock, Inbox
 } from 'lucide-react';
 import { useVeloWallet } from '@/hooks/useVeloWallet';
 import { VELO_CONSTANTS, Tier, PoolSize } from '@/lib/solana/config';
 import { StealthAddress } from '@/lib/solana/stealth';
 import { MixerPool } from '@/lib/solana/mixer';
 import { ConfidentialPanel } from '@/components/confidential-panel';
+import { PendingTransfersPanel } from '@/components/pending-transfers-panel';
 
 interface DashboardProps {
   username: string;
@@ -20,7 +21,7 @@ interface DashboardProps {
   onLogout: () => void;
 }
 
-type ModalType = 'transfer' | 'mix' | 'stealth' | 'deposit' | 'tier' | 'airdrop' | 'confidential' | null;
+type ModalType = 'transfer' | 'mix' | 'stealth' | 'deposit' | 'tier' | 'airdrop' | 'confidential' | 'pendingClaims' | null;
 
 export default function VeloDashboard({ username, publicKey, secretKey, tier, onLogout }: DashboardProps) {
   const [copied, setCopied] = useState(false);
@@ -78,7 +79,7 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
               <Download className="w-4 h-4" />
               AIRDROP
             </button>
-            <button 
+            <button
               onClick={onLogout}
               className="terminal-btn px-4 py-2 text-sm flex items-center gap-2"
             >
@@ -125,7 +126,7 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
                     <code className="text-terminal-cyan text-sm flex-1 truncate">
                       {publicKey}
                     </code>
-                    <button 
+                    <button
                       onClick={copyToClipboard}
                       className="p-2 hover:bg-[rgba(0,255,157,0.1)] transition-colors"
                     >
@@ -134,13 +135,13 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
                   </div>
                 </div>
                 <div className="flex gap-2 mt-4">
-                  <button 
+                  <button
                     onClick={() => setActiveModal('deposit')}
                     className="terminal-btn-filled flex-1 py-3 text-lg font-bold"
                   >
                     {'>'} DEPOSIT
                   </button>
-                  <button 
+                  <button
                     onClick={() => wallet.refreshBalance()}
                     className="terminal-btn px-4"
                     title="Refresh balance"
@@ -187,7 +188,7 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
                   <span>{privacyScore}%</span>
                 </div>
                 <div className="h-2 bg-[rgba(0,255,157,0.1)] mt-2">
-                  <div 
+                  <div
                     className="h-full bg-[var(--terminal-green)] transition-all"
                     style={{ width: `${privacyScore}%` }}
                   />
@@ -218,35 +219,47 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
             <BentoItem className="col-span-2">
               <h2 className="text-2xl md:text-3xl mb-4">{'>'} QUICK_ACTIONS</h2>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                <button 
+                <button
                   onClick={() => setActiveModal('transfer')}
                   className="terminal-btn py-4 flex flex-col items-center gap-2"
                 >
                   <ArrowRight className="w-6 h-6" />
                   <span>TRANSFER</span>
                 </button>
-                <button 
+                <button
                   onClick={() => setActiveModal('mix')}
                   className="terminal-btn py-4 flex flex-col items-center gap-2"
                 >
                   <RefreshCw className="w-6 h-6" />
                   <span>MIX</span>
                 </button>
-                <button 
+                <button
                   onClick={() => setActiveModal('stealth')}
                   className="terminal-btn py-4 flex flex-col items-center gap-2"
                 >
                   <Eye className="w-6 h-6" />
                   <span>STEALTH</span>
                 </button>
-                <button 
+                <button
                   onClick={() => setActiveModal('confidential')}
                   className="terminal-btn py-4 flex flex-col items-center gap-2 border-purple-500/50"
                 >
                   <Lock className="w-6 h-6 text-purple-400" />
                   <span>ENCRYPT</span>
                 </button>
-                <button 
+                <button
+                  onClick={() => setActiveModal('pendingClaims')}
+                  className="terminal-btn py-4 flex flex-col items-center gap-2 border-green-500/50 relative"
+                >
+                  <Inbox className="w-6 h-6 text-green-400" />
+                  <span>CLAIMS</span>
+                  {wallet.pendingTransfers.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-green-500 text-black text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                      {wallet.pendingTransfers.length}
+                    </span>
+                  )}
+                </button>
+                <button
                   onClick={() => setActiveModal('tier')}
                   className="terminal-btn py-4 flex flex-col items-center gap-2"
                 >
@@ -284,21 +297,21 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
       {activeModal && (
         <TerminalModal onClose={() => setActiveModal(null)}>
           {activeModal === 'transfer' && (
-            <TransferModal 
-              wallet={wallet} 
+            <TransferModal
+              wallet={wallet}
               tier={tier}
               onLog={addLog}
             />
           )}
           {activeModal === 'mix' && (
-            <MixModal 
+            <MixModal
               wallet={wallet}
               tier={tier}
               onLog={addLog}
             />
           )}
           {activeModal === 'stealth' && (
-            <StealthModal 
+            <StealthModal
               wallet={wallet}
               onLog={addLog}
             />
@@ -310,14 +323,20 @@ export default function VeloDashboard({ username, publicKey, secretKey, tier, on
             <TierModal currentTier={tier} />
           )}
           {activeModal === 'airdrop' && (
-            <AirdropModal 
+            <AirdropModal
               wallet={wallet}
               onLog={addLog}
               onClose={() => setActiveModal(null)}
             />
           )}
           {activeModal === 'confidential' && (
-            <ConfidentialModal 
+            <ConfidentialModal
+              wallet={wallet}
+              onLog={addLog}
+            />
+          )}
+          {activeModal === 'pendingClaims' && (
+            <PendingClaimsModal
               wallet={wallet}
               onLog={addLog}
             />
@@ -347,11 +366,11 @@ function TerminalModal({ children, onClose }: { children: React.ReactNode; onClo
 }
 
 // Transfer Modal with real functionality
-function TransferModal({ 
-  wallet, 
+function TransferModal({
+  wallet,
   tier,
-  onLog 
-}: { 
+  onLog
+}: {
   wallet: ReturnType<typeof useVeloWallet>;
   tier: string;
   onLog: (type: string, message: string) => void;
@@ -368,12 +387,12 @@ function TransferModal({
     acc[solAmount].push(note);
     return acc;
   }, {} as Record<number, typeof wallet.mixerNotes>);
-  
+
   const availableAmounts = Object.keys(notesByDenom).map(Number).sort((a, b) => a - b);
 
   const handleTransfer = async () => {
     if (!recipient || selectedNote === null) return;
-    
+
     if (!wallet.validateAddress(recipient)) {
       setResult({ success: false, message: 'Invalid recipient address' });
       return;
@@ -383,12 +402,12 @@ function TransferModal({
     onLog('INFO', `Initiating private transfer of ${selectedNote} SOL via mixer...`);
 
     const txResult = await wallet.sendPrivate(recipient, selectedNote);
-    
+
     if (txResult.success) {
-      setResult({ 
-        success: true, 
+      setResult({
+        success: true,
         message: `Private transfer complete!`,
-        signature: txResult.signature 
+        signature: txResult.signature
       });
       onLog('OK', `Private transfer complete: ${txResult.signature?.slice(0, 16)}...`);
       setRecipient('');
@@ -415,9 +434,8 @@ function TransferModal({
                   <button
                     key={amt}
                     onClick={() => setSelectedNote(amt)}
-                    className={`terminal-btn py-3 text-center ${
-                      selectedNote === amt ? 'border-terminal-cyan bg-terminal-cyan/10' : ''
-                    }`}
+                    className={`terminal-btn py-3 text-center ${selectedNote === amt ? 'border-terminal-cyan bg-terminal-cyan/10' : ''
+                      }`}
                   >
                     <span className="text-lg">{amt}</span>
                     <span className="text-xs text-terminal-dim block">SOL</span>
@@ -426,18 +444,18 @@ function TransferModal({
                 ))}
               </div>
             </div>
-            
+
             <div>
               <label className="text-terminal-dim text-sm block mb-2">RECIPIENT_ADDRESS:</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={recipient}
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder="Enter Solana address..."
                 className="terminal-input"
               />
             </div>
-            
+
             <div className="pt-4 border-t border-terminal">
               <p className="text-terminal-dim text-sm mb-2">
                 🔒 Using mixer for unlinkable transfer
@@ -445,7 +463,7 @@ function TransferModal({
               <p className="text-terminal-cyan text-xs mb-4">
                 Recipient will receive {selectedNote || '?'} SOL with no link to your wallet
               </p>
-              <button 
+              <button
                 onClick={handleTransfer}
                 disabled={isLoading || !recipient || selectedNote === null}
                 className="terminal-btn-filled w-full py-3 disabled:opacity-50 flex items-center justify-center gap-2"
@@ -465,7 +483,7 @@ function TransferModal({
           <div className="text-center py-8">
             <p className="text-terminal-dim mb-4">No mixer notes available</p>
             <p className="text-sm text-terminal-cyan mb-4">
-              To send privately, first deposit to a mixer pool.<br/>
+              To send privately, first deposit to a mixer pool.<br />
               Then you can withdraw to any address anonymously.
             </p>
             <p className="text-xs text-terminal-dim">
@@ -473,12 +491,12 @@ function TransferModal({
             </p>
           </div>
         )}
-        
+
         {result && (
           <div className={`text-center text-sm ${result.success ? 'status-online' : 'text-[#ff4444]'}`}>
             <p>[{result.success ? 'OK' : 'ERROR'}] {result.message}</p>
             {result.success && result.signature && (
-              <a 
+              <a
                 href={`https://solscan.io/tx/${result.signature}?cluster=devnet`}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -495,20 +513,20 @@ function TransferModal({
 }
 
 // Mix Modal with real on-chain functionality - Multi-Pool Support
-function MixModal({ 
+function MixModal({
   wallet,
   tier,
   onLog
-}: { 
+}: {
   wallet: ReturnType<typeof useVeloWallet>;
   tier: string;
   onLog: (type: string, message: string) => void;
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingPool, setLoadingPool] = useState<string | null>(null);
-  const [depositResult, setDepositResult] = useState<{ 
-    note: { commitment: string; nullifier: string; secret: string; poolSize: string }; 
-    signature: string 
+  const [depositResult, setDepositResult] = useState<{
+    note: { commitment: string; nullifier: string; secret: string; poolSize: string };
+    signature: string
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -525,12 +543,12 @@ function MixModal({
   const handleDeposit = async (poolDenomination: number) => {
     const solAmount = poolDenomination / 1e9;
     const poolSize = poolSizeMap[poolDenomination];
-    
+
     if (!poolSize) {
       onLog('ERROR', 'Invalid pool denomination');
       return;
     }
-    
+
     if (wallet.balance.sol < solAmount + 0.01) { // Include fee buffer
       onLog('ERROR', `Insufficient balance. Need ${solAmount} SOL + fees`);
       setError(`Insufficient balance. Need ${solAmount} SOL + fees`);
@@ -544,9 +562,9 @@ function MixModal({
 
     try {
       const result = await wallet.depositToMixer(poolSize);
-      
+
       if (result) {
-        setDepositResult({ 
+        setDepositResult({
           note: {
             commitment: result.note.commitment,
             nullifier: result.note.nullifier,
@@ -584,16 +602,16 @@ function MixModal({
       <h2 className="text-2xl mb-6">{'>'} MIXING_POOL</h2>
       <div className="space-y-4">
         <p className="text-terminal-dim">Select pool denomination:</p>
-        
+
         {/* Show available pools - all three now active! */}
         {pools.map((pool) => {
           const solAmount = pool.denomination / 1e9;
           const poolSize = poolSizeMap[pool.denomination];
           const canAfford = wallet.balance.sol >= solAmount + 0.01;
           const isThisLoading = loadingPool === poolSize;
-          
+
           return (
-            <button 
+            <button
               key={pool.id}
               onClick={() => handleDeposit(pool.denomination)}
               disabled={isLoading || !canAfford}
@@ -612,7 +630,7 @@ function MixModal({
             </button>
           );
         })}
-        
+
         <div className="pt-4 border-t border-terminal">
           <p className="text-terminal-dim text-sm">
             Your tier: {mixRounds}x mixing rounds
@@ -624,13 +642,13 @@ function MixModal({
             <p className="text-sm">{error}</p>
           </div>
         )}
-        
+
         {depositResult && (
           <div className="p-3 bg-[rgba(0,255,157,0.1)] border border-terminal">
             <p className="text-sm text-terminal-dim mb-1">✅ DEPOSIT SUCCESSFUL ({depositResult.note.poolSize} pool):</p>
             <code className="text-xs text-terminal-cyan break-all">{depositResult.note.commitment.slice(0, 32)}...</code>
-            
-            <a 
+
+            <a
               href={`https://solscan.io/tx/${depositResult.signature}?cluster=devnet`}
               target="_blank"
               rel="noopener noreferrer"
@@ -638,11 +656,11 @@ function MixModal({
             >
               🔗 View transaction on Solscan →
             </a>
-            
+
             <p className="text-xs text-yellow-400 mt-2">
               ⚠️ Note saved! Go to SEND tab to transfer privately.
             </p>
-            <button 
+            <button
               onClick={copyNote}
               className="terminal-btn w-full mt-2 py-2 text-sm"
             >
@@ -650,7 +668,7 @@ function MixModal({
             </button>
           </div>
         )}
-        
+
         {wallet.balance.sol === 0 && (
           <p className="text-center text-terminal-dim text-sm">
             [INFO] Deposit funds to join mixer pool
@@ -668,10 +686,10 @@ function MixModal({
 }
 
 // Stealth Modal with real functionality
-function StealthModal({ 
+function StealthModal({
   wallet,
   onLog
-}: { 
+}: {
   wallet: ReturnType<typeof useVeloWallet>;
   onLog: (type: string, message: string) => void;
 }) {
@@ -719,13 +737,13 @@ function StealthModal({
             <li>• ECDH encrypted (Curve25519)</li>
           </ul>
           <div className="flex gap-2">
-            <button 
+            <button
               onClick={copyAddress}
               className="terminal-btn flex-1 py-3"
             >
               {copied ? '✓ COPIED' : '> COPY_ADDRESS'}
             </button>
-            <button 
+            <button
               onClick={generate}
               className="terminal-btn px-4"
             >
@@ -739,11 +757,11 @@ function StealthModal({
 }
 
 // Airdrop Modal (Devnet only)
-function AirdropModal({ 
+function AirdropModal({
   wallet,
   onLog,
   onClose
-}: { 
+}: {
   wallet: ReturnType<typeof useVeloWallet>;
   onLog: (type: string, message: string) => void;
   onClose: () => void;
@@ -758,13 +776,13 @@ function AirdropModal({
     onLog('INFO', 'Requesting devnet airdrop...');
 
     const airdropResult = await wallet.requestDevnetAirdrop();
-    
+
     if (airdropResult.success) {
       setResult({ success: true, message: 'Airdrop successful! +2 SOL' });
       onLog('OK', 'Received 2 SOL from devnet faucet');
     } else {
-      setResult({ 
-        success: false, 
+      setResult({
+        success: false,
         message: airdropResult.error || 'Airdrop failed',
         faucetUrl: airdropResult.faucetUrl
       });
@@ -787,7 +805,7 @@ function AirdropModal({
         <p className="text-terminal-dim">
           Get free SOL from the Solana devnet for testing.
         </p>
-        
+
         <div className="p-4 bg-[rgba(0,255,157,0.05)] border border-terminal">
           <div className="flex justify-between mb-2">
             <span className="text-terminal-dim">CURRENT_BALANCE:</span>
@@ -799,7 +817,7 @@ function AirdropModal({
           </div>
         </div>
 
-        <button 
+        <button
           onClick={handleAirdrop}
           disabled={isLoading}
           className="terminal-btn-filled w-full py-3 flex items-center justify-center gap-2"
@@ -819,26 +837,26 @@ function AirdropModal({
             <p className={`text-sm ${result.success ? 'status-online' : 'text-[#ffaa00]'}`}>
               [{result.success ? 'OK' : 'RATE_LIMITED'}] {result.message}
             </p>
-            
+
             {result.faucetUrl && (
               <div className="mt-3 pt-3 border-t border-terminal">
                 <p className="text-terminal-dim text-sm mb-2">Use the web faucet instead:</p>
-                
+
                 {/* Copy address first */}
                 <div className="mb-2">
                   <p className="text-xs text-terminal-dim mb-1">1. Copy your address:</p>
-                  <button 
+                  <button
                     onClick={copyAddress}
                     className="terminal-btn w-full py-2 text-sm"
                   >
                     {addressCopied ? '✓ COPIED!' : '> COPY_ADDRESS'}
                   </button>
                 </div>
-                
+
                 {/* Then go to faucet */}
                 <div>
                   <p className="text-xs text-terminal-dim mb-1">2. Open faucet & paste address:</p>
-                  <a 
+                  <a
                     href={result.faucetUrl}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -861,10 +879,10 @@ function AirdropModal({
 }
 
 // Confidential Transfer Modal (Token-2022 encrypted amounts)
-function ConfidentialModal({ 
+function ConfidentialModal({
   wallet,
   onLog,
-}: { 
+}: {
   wallet: ReturnType<typeof useVeloWallet>;
   onLog: (type: string, message: string) => void;
 }) {
@@ -872,17 +890,54 @@ function ConfidentialModal({
     <div className="max-w-lg">
       <h2 className="text-2xl mb-2">{'>'} CONFIDENTIAL_TRANSFERS</h2>
       <p className="text-terminal-dim text-sm mb-4">
-        Token-2022 encrypted amounts - both users need Velo accounts
+        Token-2022 encrypted amounts - send to any Solana wallet
       </p>
       <ConfidentialPanel
         confidentialAccount={wallet.confidentialAccount}
         confidentialBalance={wallet.confidentialBalance}
         solBalance={wallet.balance.sol}
+        pendingTransfers={wallet.pendingTransfers}
         initConfidentialAccount={wallet.initConfidentialAccount}
         depositConfidential={wallet.depositConfidential}
         sendConfidential={wallet.sendConfidential}
+        sendConfidentialToAny={wallet.sendConfidentialToAny}
         withdrawConfidential={wallet.withdrawConfidential}
         lookupVeloAddress={wallet.lookupVeloAddress}
+        claimTransfer={wallet.claimTransfer}
+        refreshPendingTransfers={wallet.refreshPendingTransfers}
+      />
+    </div>
+  );
+}
+
+// Pending Claims Modal (Claim incoming confidential transfers)
+function PendingClaimsModal({
+  wallet,
+  onLog,
+}: {
+  wallet: ReturnType<typeof useVeloWallet>;
+  onLog: (type: string, message: string) => void;
+}) {
+  const handleClaim = async (transferId: string) => {
+    onLog('INFO', 'Claiming confidential transfer...');
+    const result = await wallet.claimTransfer(transferId);
+    if (result.success) {
+      onLog('OK', `Claimed ${result.amount?.toFixed(4) || ''} SOL successfully!`);
+    } else {
+      onLog('ERROR', result.error || 'Claim failed');
+    }
+    return result;
+  };
+
+  return (
+    <div className="max-w-lg">
+      <h2 className="text-2xl mb-2">{'>'} PENDING_CLAIMS</h2>
+      <p className="text-terminal-dim text-sm mb-4">
+        Claim confidential transfers sent to your wallet
+      </p>
+      <PendingTransfersPanel
+        walletAddress={wallet.publicKey}
+        onClaim={handleClaim}
       />
     </div>
   );
@@ -900,7 +955,7 @@ function DepositModal({ publicKey }: { publicKey: string }) {
         <div className="p-4 bg-[rgba(0,255,157,0.05)] border border-terminal">
           <code className="text-terminal-cyan text-sm break-all">{publicKey}</code>
         </div>
-        <button 
+        <button
           onClick={() => {
             navigator.clipboard.writeText(publicKey);
             setCopied(true);
@@ -939,13 +994,12 @@ function TierModal({ currentTier }: { currentTier: string }) {
       <h2 className="text-2xl mb-6">{'>'} SUBSCRIPTION_TIERS</h2>
       <div className="space-y-3">
         {tiers.map((tier) => (
-          <div 
+          <div
             key={tier.name}
-            className={`p-4 border transition-all ${
-              tier.name === currentTier 
-                ? 'border-[var(--terminal-green)] bg-[rgba(0,255,157,0.1)]' 
-                : 'border-terminal hover:border-[var(--terminal-green)]'
-            }`}
+            className={`p-4 border transition-all ${tier.name === currentTier
+              ? 'border-[var(--terminal-green)] bg-[rgba(0,255,157,0.1)]'
+              : 'border-terminal hover:border-[var(--terminal-green)]'
+              }`}
           >
             <div className="flex justify-between items-center mb-2">
               <span className="text-lg">{tier.name.toUpperCase()}</span>

@@ -174,7 +174,7 @@ export function generateVeloNote(poolSize: PoolSize): VeloNote {
 /**
  * Convert commitment string to 32-byte array for on-chain use
  */
-function commitmentToBytes(commitment: string): Uint8Array {
+export function commitmentToBytes(commitment: string): Uint8Array {
   const bytes = new Uint8Array(32);
   for (let i = 0; i < 32; i++) {
     bytes[i] = parseInt(commitment.substr(i * 2, 2), 16);
@@ -418,24 +418,28 @@ export async function areAllPoolsInitialized(connection: Connection): Promise<{
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// AUTOMATIC PRIVATE TRANSFER
+// AUTOMATIC PRIVATE TRANSFER (DIRECT FROM VELO PROGRAM)
 // ═══════════════════════════════════════════════════════════════════
 // 
-// Flow: Mixer → Fresh Wallet → Recipient
+// Flow: User → Velo Program → Recipient (DIRECT)
 // 
-// 1. Withdraw from mixer to a fresh intermediate wallet
-// 2. Fresh wallet sends to recipient's regular wallet
-// 3. Recipient sees transfer from random wallet (not connected to Velo)
-// 4. Recipient does NOT need Velo!
+// 1. User calls Velo program with recipient address
+// 2. Velo program verifies withdrawal proof
+// 3. Velo program transfers directly from vault to recipient
+// 4. Recipient gets SOL automatically - NO claim, NO setup needed!
+//
+// On Solscan: "Interact with Velo" - recipient sees transfer from Velo vault PDA
 
 /**
- * Send privately to ANY regular Solana wallet
- * Recipient does NOT need Velo - they just receive SOL from a random wallet
+ * Send privately to ANY regular Solana wallet - DIRECT via Velo program
  * 
- * Flow:
- * 1. Withdraw from mixer to fresh intermediate wallet
- * 2. Intermediate wallet sends to recipient
- * 3. Recipient sees: "Received from [random wallet]"
+ * Recipient does NOT need Velo - they just receive SOL automatically!
+ * On Solscan: Shows "Interact with Velo" and transfer from Velo vault
+ * 
+ * Privacy:
+ * - Sender is hidden (mixer breaks link to original deposit)
+ * - Amount uses fixed pools (0.1, 1, 10 SOL)
+ * - Recipient just sees SOL from "Velo vault" address
  */
 export async function sendPrivateAuto(
   connection: Connection,
@@ -445,7 +449,6 @@ export async function sendPrivateAuto(
 ): Promise<{ 
   success: boolean; 
   signature?: string;
-  intermediateWallet?: string;
   error?: string 
 }> {
   try {
@@ -453,75 +456,56 @@ export async function sendPrivateAuto(
     
     // Derive poolSize from denomination if not present (backward compatibility)
     const poolSize = note.poolSize || getPoolSizeFromDenomination(note.denomination);
+    const amountSol = note.denomination / LAMPORTS_PER_SOL;
     
-    // Step 1: Generate fresh intermediate wallet
-    const intermediateWallet = Keypair.generate();
-    console.log('🔒 Private Transfer (Auto Mode)');
-    console.log('   Pool:', poolSize, '(' + (note.denomination / 1_000_000_000) + ' SOL)');
-    console.log('   Intermediate wallet:', intermediateWallet.publicKey.toBase58().slice(0, 16) + '...');
-    console.log('   Final recipient:', recipientAddress.slice(0, 16) + '...');
+    console.log('');
+    console.log('═══════════════════════════════════════');
+    console.log('   VELO PRIVATE TRANSFER');
+    console.log('═══════════════════════════════════════');
+    console.log('   Pool:', poolSize, `(${amountSol} SOL)`);
+    console.log('   Recipient:', recipientAddress.slice(0, 16) + '...');
+    console.log('');
+    console.log('   Flow: You → Velo Program → Recipient');
+    console.log('   On Solscan: "Interact with Velo"');
+    console.log('');
     
-    // Step 2: Withdraw from mixer to intermediate wallet
-    console.log('   Step 1: Withdrawing from mixer to intermediate...');
+    // Get nullifier from note
     const nullifierBytes = bs58.decode(note.nullifier);
     
-    const withdrawTx = new Transaction();
-    withdrawTx.add(createWithdrawTestInstruction(
-      intermediateWallet.publicKey, 
+    // Create withdrawal instruction - sends DIRECTLY to recipient
+    // The Velo program transfers from vault PDA to recipient
+    const withdrawIx = createWithdrawTestInstruction(
+      recipient,  // Direct to recipient - no intermediate!
       nullifierBytes, 
       poolSize
-    ));
+    );
     
-    const withdrawSig = await sendAndConfirmTransaction(
+    const tx = new Transaction().add(withdrawIx);
+    
+    console.log('   Sending transaction...');
+    const signature = await sendAndConfirmTransaction(
       connection,
-      withdrawTx,
+      tx,
       [feePayer],
       { commitment: 'confirmed' }
     );
-    console.log('   ✓ Mixer withdrawal:', withdrawSig.slice(0, 20) + '...');
     
-    // Small delay to ensure the intermediate wallet is funded
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Step 3: Send from intermediate to final recipient
-    console.log('   Step 2: Sending from intermediate to recipient...');
-    
-    // Calculate amount to send (leave some for rent if needed)
-    const intermediateBalance = await connection.getBalance(intermediateWallet.publicKey);
-    const sendAmount = intermediateBalance - 5000; // Leave 5000 lamports for fee
-    
-    if (sendAmount <= 0) {
-      return { success: false, error: 'Intermediate wallet has insufficient balance' };
-    }
-    
-    const transferIx = SystemProgram.transfer({
-      fromPubkey: intermediateWallet.publicKey,
-      toPubkey: recipient,
-      lamports: sendAmount,
-    });
-    
-    const transferTx = new Transaction().add(transferIx);
-    
-    const transferSig = await sendAndConfirmTransaction(
-      connection,
-      transferTx,
-      [intermediateWallet], // Intermediate wallet signs
-      { commitment: 'confirmed' }
-    );
-    
-    console.log('   ✓ Final transfer:', transferSig.slice(0, 20) + '...');
     console.log('');
+    console.log('   ✅ TRANSFER COMPLETE');
+    console.log('   ────────────────────');
+    console.log(`   Amount: ${amountSol} SOL`);
+    console.log(`   To: ${recipientAddress.slice(0, 20)}...`);
+    console.log(`   Tx: ${signature.slice(0, 20)}...`);
+    console.log('');
+    console.log('   What recipient sees:');
+    console.log('   • Received SOL from Velo vault address');
+    console.log('   • NO connection to you');
+    console.log('   • Automatic - no claim needed!');
     console.log('═══════════════════════════════════════');
-    console.log('   PRIVATE TRANSFER COMPLETE');
-    console.log('═══════════════════════════════════════');
-    console.log('   Recipient sees: transfer from', intermediateWallet.publicKey.toBase58().slice(0, 12) + '...');
-    console.log('   Connection to you: NONE');
-    console.log('   Connection to Velo: HIDDEN');
     
     return { 
       success: true, 
-      signature: transferSig,
-      intermediateWallet: intermediateWallet.publicKey.toBase58(),
+      signature,
     };
   } catch (error: any) {
     console.error('Private transfer failed:', error);

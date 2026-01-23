@@ -44,10 +44,14 @@ import {
   confidentialDeposit,
   confidentialTransfer,
   confidentialWithdraw,
+  confidentialTransferToAny,
+  claimConfidentialTransfer,
+  getPendingTransfersForWallet,
   loadVeloAccount,
   storeVeloAccount,
   lookupVeloUser,
   VeloConfidentialAccount,
+  PendingConfidentialTransfer,
 } from '@/lib/solana/confidential-token';
 import {
   generateStealthMetaAddress,
@@ -78,6 +82,7 @@ interface VeloWalletState {
   mixerNotes: MixerNote[];
   confidentialAccount: VeloConfidentialAccount | null;
   confidentialBalance: number; // in SOL (decrypted locally)
+  pendingTransfers: PendingConfidentialTransfer[]; // Pending claims
   isLoading: boolean;
   error: string | null;
 }
@@ -105,8 +110,16 @@ interface VeloWalletActions {
   initConfidentialAccount: () => Promise<boolean>;
   depositConfidential: (amount: number) => Promise<TransactionResult>;
   sendConfidential: (recipientVeloAddress: string, amount: number) => Promise<TransactionResult>;
+  sendConfidentialToAny: (recipientAddress: string, amount: number) => Promise<{
+    success: boolean;
+    signature?: string;
+    pendingTransfer?: PendingConfidentialTransfer;
+    error?: string;
+  }>;
   withdrawConfidential: (amount: number) => Promise<TransactionResult>;
   lookupVeloAddress: (address: string) => Promise<{ found: boolean; elGamalPublicKey?: string }>;
+  refreshPendingTransfers: () => void;
+  claimTransfer: (transferId: string) => Promise<{ success: boolean; amount?: number; error?: string }>;
 }
 
 export function useVeloWallet(
@@ -121,6 +134,7 @@ export function useVeloWallet(
   const [mixerNotes, setMixerNotes] = useState<MixerNote[]>([]);
   const [confidentialAccount, setConfidentialAccount] = useState<VeloConfidentialAccount | null>(null);
   const [confidentialBalance, setConfidentialBalance] = useState<number>(0);
+  const [pendingTransfers, setPendingTransfers] = useState<PendingConfidentialTransfer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -162,6 +176,10 @@ export function useVeloWallet(
           }
         }
 
+        // Load pending confidential transfers for this wallet
+        const pending = getPendingTransfersForWallet(publicKey);
+        setPendingTransfers(pending);
+
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to initialize wallet');
@@ -201,40 +219,41 @@ export function useVeloWallet(
 
     try {
       const amountLamports = amount * LAMPORTS_PER_SOL;
-      
+
       // Find a matching mixer note for this amount
       const matchingNote = mixerNotes.find(note => note.denomination === amountLamports);
-      
+
       if (matchingNote) {
-        // Use automatic private transfer with intermediate wallet
+        // DIRECT private transfer via Velo program
         const poolSize = matchingNote.poolSize || getPoolSizeFromDenomination(matchingNote.denomination);
-        console.log('🔒 AUTOMATIC PRIVATE TRANSFER');
-        console.log('   Note pool:', poolSize, '(' + amount + ' SOL)');
+        console.log('');
+        console.log('🔒 VELO PRIVATE TRANSFER');
+        console.log('   Pool:', poolSize, '(' + amount + ' SOL)');
         console.log('   Recipient:', to.slice(0, 16) + '...');
         console.log('');
-        console.log('   Flow: Mixer → Fresh Wallet → Recipient');
-        console.log('   Recipient will see: transfer from random wallet');
-        console.log('   Connection to you: NONE');
-        
+        console.log('   Flow: Velo Program → Recipient (DIRECT)');
+        console.log('   On Solscan: "Interact with Velo"');
+        console.log('   Recipient gets SOL automatically - no claim!');
+
         const keypair = getKeypairFromSecret(secretKey);
-        
-        // Use the automatic private transfer (with intermediate wallet)
+
+        // DIRECT transfer via Velo program to recipient
         const result = await sendPrivateAuto(
           getConnection(),
           keypair,
           matchingNote,
           to
         );
-        
+
         if (result.success) {
           // Remove used note
           const updatedNotes = mixerNotes.filter(n => n.commitment !== matchingNote.commitment);
           setMixerNotes(updatedNotes);
           localStorage.setItem(`velo_notes_${publicKey}`, JSON.stringify(updatedNotes));
           await refreshBalance();
-          
-          return { 
-            success: true, 
+
+          return {
+            success: true,
             signature: result.signature,
           };
         } else {
@@ -244,16 +263,16 @@ export function useVeloWallet(
         // No matching note - show available options
         const availableNotes = mixerNotes.map(n => n.denomination / LAMPORTS_PER_SOL);
         const uniqueAmounts = [...new Set(availableNotes)];
-        
+
         if (mixerNotes.length === 0) {
-          return { 
-            success: false, 
-            error: `No mixer notes available. Deposit ${amount} SOL to mixer first for private transfers.` 
+          return {
+            success: false,
+            error: `No mixer notes available. Deposit ${amount} SOL to mixer first for private transfers.`
           };
         } else {
-          return { 
-            success: false, 
-            error: `No ${amount} SOL note available. You have notes for: ${uniqueAmounts.join(', ')} SOL` 
+          return {
+            success: false,
+            error: `No ${amount} SOL note available. You have notes for: ${uniqueAmounts.join(', ')} SOL`
           };
         }
       }
@@ -283,56 +302,56 @@ export function useVeloWallet(
   const depositToMixer = useCallback(async (poolSize: PoolSize): Promise<{ note: MixerNote; signature: string } | null> => {
     try {
       setError(null);
-      
+
       // Get deposit amount based on pool size
       const denominationLamports = POOL_DENOMINATIONS[poolSize];
       const denominationSol = denominationLamports / LAMPORTS_PER_SOL;
       const txFee = 0.01; // Estimated transaction fee buffer
-      
+
       // Check balance including fee buffer
       if (balance.sol < denominationSol + txFee) {
         const err = `Insufficient balance. Need ${denominationSol} SOL + fees. You have ${balance.sol.toFixed(4)} SOL`;
         setError(err);
         return null;
       }
-      
+
       // Generate note for this specific pool size
       const note = generateMixerNote(poolSize);
-      
+
       // Get keypair for signing
       const keypair = getKeypairFromSecret(secretKey);
-      
+
       // Get PDAs for this pool
       const { poolPDA, vaultPDA } = getPoolPDAs(poolSize);
-      
+
       // Deposit on-chain
       console.log('Depositing to mixer...');
       console.log('Pool Size:', poolSize, `(${denominationSol} SOL)`);
       console.log('Pool PDA:', poolPDA.toBase58());
       console.log('Vault PDA:', vaultPDA.toBase58());
       console.log('Commitment:', note.commitment);
-      
+
       const result = await depositToMixerOnChain(
         getConnection(),
         keypair,
         note
       );
-      
+
       if (!result.success) {
         setError(result.error || 'Deposit failed');
         return null;
       }
-      
+
       console.log('Deposit successful! Signature:', result.signature);
-      
+
       // Save note to localStorage (encrypted in production)
       const updatedNotes = [...mixerNotes, note];
       setMixerNotes(updatedNotes);
       localStorage.setItem(`velo_notes_${publicKey}`, JSON.stringify(updatedNotes));
-      
+
       // Refresh balance
       await refreshBalance();
-      
+
       return { note, signature: result.signature! };
     } catch (err) {
       console.error('Deposit error:', err);
@@ -402,34 +421,34 @@ export function useVeloWallet(
 
       const keypair = getKeypairFromSecret(secretKey);
       const recipientPubkey = new PublicKey(recipient);
-      
+
       const result = await withdrawFromMixerOnChain(
         getConnection(),
         keypair, // Fee payer (in production, this would be a relayer)
         note,
         recipientPubkey
       );
-      
+
       if (result.success) {
         console.log('Withdrawal successful! Signature:', result.signature);
-        
+
         // Remove note from local storage
         const updatedNotes = mixerNotes.filter(n => n.commitment !== note.commitment);
         setMixerNotes(updatedNotes);
         localStorage.setItem(`velo_notes_${publicKey}`, JSON.stringify(updatedNotes));
-        
+
         // Refresh balance
         await refreshBalance();
-        
+
         return { success: true, signature: result.signature };
       } else {
         return { success: false, error: result.error };
       }
     } catch (err) {
       console.error('Withdrawal error:', err);
-      return { 
-        success: false, 
-        error: err instanceof Error ? err.message : 'Withdrawal failed' 
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Withdrawal failed'
       };
     }
   }, [publicKey, secretKey, mixerNotes, refreshBalance]);
@@ -479,20 +498,20 @@ export function useVeloWallet(
 
     try {
       const amountLamports = amount * LAMPORTS_PER_SOL;
-      
+
       // Find a matching note
       const noteIndex = mixerNotes.findIndex(note => note.denomination === amountLamports);
       if (noteIndex === -1) {
         const availableAmounts = [...new Set(mixerNotes.map(n => n.denomination / LAMPORTS_PER_SOL))];
         if (mixerNotes.length === 0) {
-          return { 
-            success: false, 
-            error: `No mixer notes available. Deposit ${amount} SOL to mixer first.` 
+          return {
+            success: false,
+            error: `No mixer notes available. Deposit ${amount} SOL to mixer first.`
           };
         }
-        return { 
-          success: false, 
-          error: `No ${amount} SOL note available. You have: ${availableAmounts.join(', ')} SOL` 
+        return {
+          success: false,
+          error: `No ${amount} SOL note available. You have: ${availableAmounts.join(', ')} SOL`
         };
       }
 
@@ -514,16 +533,16 @@ export function useVeloWallet(
         console.log('✅ Stealth transfer complete!');
         console.log('   Signature:', result.signature);
         console.log('   Stealth address:', result.stealthInfo?.stealthAddress);
-        
+
         // Remove used note
         const updatedNotes = mixerNotes.filter((_, i) => i !== noteIndex);
         setMixerNotes(updatedNotes);
         localStorage.setItem(`velo_notes_${publicKey}`, JSON.stringify(updatedNotes));
-        
+
         await refreshBalance();
-        
-        return { 
-          success: true, 
+
+        return {
+          success: true,
           signature: result.signature,
         };
       } else {
@@ -531,9 +550,9 @@ export function useVeloWallet(
       }
     } catch (err) {
       console.error('Stealth transfer error:', err);
-      return { 
-        success: false, 
-        error: err instanceof Error ? err.message : 'Stealth transfer failed' 
+      return {
+        success: false,
+        error: err instanceof Error ? err.message : 'Stealth transfer failed'
       };
     }
   }, [secretKey, publicKey, mixerNotes, refreshBalance]);
@@ -562,29 +581,29 @@ export function useVeloWallet(
     try {
       const keypair = getKeypairFromSecret(secretKey);
       const connection = getConnection();
-      
+
       // Create a placeholder mint (in production, use the real cSOL mint)
       const placeholderMint = new PublicKey('11111111111111111111111111111111');
-      
+
       console.log('═══════════════════════════════════════');
       console.log('    CREATING VELO CONFIDENTIAL ACCOUNT');
       console.log('═══════════════════════════════════════');
-      
+
       const account = await createVeloConfidentialAccount(
         connection,
         keypair,
         placeholderMint
       );
-      
+
       // Store account
       storeVeloAccount(account);
       setConfidentialAccount(account);
-      
+
       console.log('');
       console.log('✅ Velo confidential account created!');
       console.log('   You can now send/receive with encrypted amounts');
       console.log('   ElGamal Public Key:', account.elGamalPublicKey.slice(0, 20) + '...');
-      
+
       return true;
     } catch (err) {
       console.error('Failed to create confidential account:', err);
@@ -598,7 +617,7 @@ export function useVeloWallet(
     if (!secretKey) {
       return { success: false, error: 'Wallet not initialized' };
     }
-    
+
     if (!confidentialAccount) {
       return { success: false, error: 'No confidential account. Call initConfidentialAccount() first.' };
     }
@@ -611,7 +630,7 @@ export function useVeloWallet(
       const keypair = getKeypairFromSecret(secretKey);
       const connection = getConnection();
       const placeholderMint = new PublicKey('11111111111111111111111111111111');
-      
+
       const result = await confidentialDeposit(
         connection,
         keypair,
@@ -619,17 +638,17 @@ export function useVeloWallet(
         placeholderMint,
         confidentialAccount
       );
-      
+
       if (result.success) {
         // Update local confidential balance
         const newBalance = confidentialBalance + amount;
         setConfidentialBalance(newBalance);
         localStorage.setItem(`velo_cbal_${publicKey}`, newBalance.toString());
-        
+
         await refreshBalance();
         return { success: true, signature: result.signature };
       }
-      
+
       return { success: false, error: result.error };
     } catch (err) {
       console.error('Confidential deposit failed:', err);
@@ -645,15 +664,15 @@ export function useVeloWallet(
     if (!secretKey) {
       return { success: false, error: 'Wallet not initialized' };
     }
-    
+
     if (!confidentialAccount) {
       return { success: false, error: 'No confidential account. Call initConfidentialAccount() first.' };
     }
 
     if (confidentialBalance < amount) {
-      return { 
-        success: false, 
-        error: `Insufficient cSOL balance. You have ${confidentialBalance.toFixed(4)} cSOL` 
+      return {
+        success: false,
+        error: `Insufficient cSOL balance. You have ${confidentialBalance.toFixed(4)} cSOL`
       };
     }
 
@@ -661,16 +680,16 @@ export function useVeloWallet(
       // Look up recipient's Velo account
       const connection = getConnection();
       const recipientAccount = await lookupVeloUser(connection, recipientVeloAddress);
-      
+
       if (!recipientAccount.found) {
-        return { 
-          success: false, 
-          error: 'Recipient does not have a Velo account. They need to create one first.' 
+        return {
+          success: false,
+          error: 'Recipient does not have a Velo account. They need to create one first.'
         };
       }
-      
+
       const keypair = getKeypairFromSecret(secretKey);
-      
+
       // Create mock recipient account for the transfer
       const mockRecipientAccount: VeloConfidentialAccount = {
         solanaPublicKey: recipientVeloAddress,
@@ -681,7 +700,7 @@ export function useVeloWallet(
         createdAt: 0,
         lastActivity: 0,
       };
-      
+
       const result = await confidentialTransfer(
         connection,
         keypair,
@@ -689,16 +708,16 @@ export function useVeloWallet(
         mockRecipientAccount,
         amount
       );
-      
+
       if (result.success) {
         // Update local confidential balance
         const newBalance = confidentialBalance - amount;
         setConfidentialBalance(newBalance);
         localStorage.setItem(`velo_cbal_${publicKey}`, newBalance.toString());
-        
+
         return { success: true, signature: result.signature };
       }
-      
+
       return { success: false, error: result.error };
     } catch (err) {
       console.error('Confidential transfer failed:', err);
@@ -711,39 +730,39 @@ export function useVeloWallet(
     if (!secretKey) {
       return { success: false, error: 'Wallet not initialized' };
     }
-    
+
     if (!confidentialAccount) {
       return { success: false, error: 'No confidential account.' };
     }
 
     if (confidentialBalance < amount) {
-      return { 
-        success: false, 
-        error: `Insufficient cSOL balance. You have ${confidentialBalance.toFixed(4)} cSOL` 
+      return {
+        success: false,
+        error: `Insufficient cSOL balance. You have ${confidentialBalance.toFixed(4)} cSOL`
       };
     }
 
     try {
       const keypair = getKeypairFromSecret(secretKey);
       const connection = getConnection();
-      
+
       const result = await confidentialWithdraw(
         connection,
         keypair,
         confidentialAccount,
         amount
       );
-      
+
       if (result.success) {
         // Update local confidential balance
         const newBalance = confidentialBalance - amount;
         setConfidentialBalance(newBalance);
         localStorage.setItem(`velo_cbal_${publicKey}`, newBalance.toString());
-        
+
         await refreshBalance();
         return { success: true, signature: result.signature };
       }
-      
+
       return { success: false, error: result.error };
     } catch (err) {
       console.error('Confidential withdraw failed:', err);
@@ -763,6 +782,110 @@ export function useVeloWallet(
     }
   }, []);
 
+  // ═══════════════════════════════════════════════════════════════════
+  // SEND TO ANY WALLET (Creates pending transfer for non-Velo recipients)
+  // ═══════════════════════════════════════════════════════════════════
+
+  // Send confidential transfer to ANY wallet (not just Velo users)
+  const sendConfidentialToAny = useCallback(async (
+    recipientAddress: string,
+    amount: number
+  ): Promise<{
+    success: boolean;
+    signature?: string;
+    pendingTransfer?: PendingConfidentialTransfer;
+    error?: string;
+  }> => {
+    if (!secretKey) {
+      return { success: false, error: 'Wallet not initialized' };
+    }
+
+    if (!confidentialAccount) {
+      return { success: false, error: 'No confidential account. Create one first.' };
+    }
+
+    if (confidentialBalance < amount) {
+      return {
+        success: false,
+        error: `Insufficient cSOL balance. You have ${confidentialBalance.toFixed(4)} cSOL`
+      };
+    }
+
+    try {
+      const keypair = getKeypairFromSecret(secretKey);
+      const connection = getConnection();
+
+      const result = await confidentialTransferToAny(
+        connection,
+        keypair,
+        confidentialAccount,
+        recipientAddress,
+        amount
+      );
+
+      if (result.success) {
+        // Update local confidential balance
+        const newBalance = confidentialBalance - amount;
+        setConfidentialBalance(newBalance);
+        localStorage.setItem(`velo_cbal_${publicKey}`, newBalance.toString());
+
+        return {
+          success: true,
+          signature: result.signature,
+          pendingTransfer: result.pendingTransfer,
+        };
+      }
+
+      return { success: false, error: result.error };
+    } catch (err) {
+      console.error('Confidential transfer to any failed:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Transfer failed' };
+    }
+  }, [secretKey, confidentialAccount, confidentialBalance, publicKey]);
+
+  // Refresh pending transfers for this wallet
+  const refreshPendingTransfers = useCallback(() => {
+    const pending = getPendingTransfersForWallet(publicKey);
+    setPendingTransfers(pending);
+  }, [publicKey]);
+
+  // Claim a pending confidential transfer
+  const claimTransfer = useCallback(async (
+    transferId: string
+  ): Promise<{ success: boolean; amount?: number; error?: string }> => {
+    if (!secretKey) {
+      return { success: false, error: 'Wallet not initialized' };
+    }
+
+    try {
+      const keypair = getKeypairFromSecret(secretKey);
+      const connection = getConnection();
+
+      const result = await claimConfidentialTransfer(
+        connection,
+        keypair,
+        transferId
+      );
+
+      if (result.success) {
+        // Refresh pending transfers list
+        refreshPendingTransfers();
+        // Refresh balance
+        await refreshBalance();
+
+        return {
+          success: true,
+          amount: result.amount,
+        };
+      }
+
+      return { success: false, error: result.error };
+    } catch (err) {
+      console.error('Claim transfer failed:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Claim failed' };
+    }
+  }, [secretKey, refreshPendingTransfers, refreshBalance]);
+
   return {
     publicKey,
     secretKey,
@@ -772,6 +895,7 @@ export function useVeloWallet(
     mixerNotes,
     confidentialAccount,
     confidentialBalance,
+    pendingTransfers,
     isLoading,
     error,
     refreshBalance,
@@ -791,7 +915,10 @@ export function useVeloWallet(
     initConfidentialAccount,
     depositConfidential,
     sendConfidential,
+    sendConfidentialToAny,
     withdrawConfidential,
     lookupVeloAddress,
+    refreshPendingTransfers,
+    claimTransfer,
   };
 }

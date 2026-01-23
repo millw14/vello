@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { Providers } from "@/components/providers";
 
 const outfit = Outfit({
   variable: "--font-outfit",
@@ -14,9 +15,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Velo | Private Solana Transfers & Trading",
-  description: "Experience lightning-fast, confidential transactions on Solana. Your trades, your privacy, your velocity.",
-  keywords: ["Solana", "DeFi", "Private", "Trading", "Crypto", "Transfers"],
+  title: "Velo | Private Solana Transfers",
+  description: "Private transfers on Solana with hidden amounts. Connect your wallet, deposit, and send privately.",
+  keywords: ["Solana", "Privacy", "Mixer", "Private Transfers", "Crypto"],
 };
 
 export default function RootLayout({
@@ -29,7 +30,9 @@ export default function RootLayout({
       <body
         className={`${outfit.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
-        {children}
+        <Providers>
+          {children}
+        </Providers>
       </body>
     </html>
   );

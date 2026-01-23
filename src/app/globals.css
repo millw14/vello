@@ -68,6 +68,38 @@ body {
   to { width: 100%; }
 }
 
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes slide-in-from-top {
+  from { 
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-from-bottom {
+  from { 
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
 /* ===== TERMINAL CONTAINER ===== */
 .terminal-container {
   min-height: 100vh;
@@ -312,4 +344,94 @@ body {
   * {
     @apply border-[var(--terminal-border)];
   }
+}
+
+/* ===== ANIMATION UTILITIES ===== */
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+.animate-in {
+  animation-duration: 300ms;
+  animation-fill-mode: both;
+}
+
+.slide-in-from-top-2 {
+  animation-name: slide-in-from-top;
+}
+
+.slide-in-from-bottom-2 {
+  animation-name: slide-in-from-bottom;
+}
+
+.fade-in {
+  animation-name: fade-in;
+}
+
+.duration-300 {
+  animation-duration: 300ms;
+}
+
+/* ===== GRADIENT UTILITIES ===== */
+.bg-gradient-radial {
+  background: radial-gradient(var(--tw-gradient-stops));
+}
+
+/* ===== BACKDROP BLUR ===== */
+.backdrop-blur-xs {
+  backdrop-filter: blur(2px);
+}
+
+/* ===== FOCUS RING ===== */
+.focus-ring-terminal:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--terminal-green);
+}
+
+/* ===== WALLET ADAPTER OVERRIDES ===== */
+.wallet-adapter-button {
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  background: rgba(10, 10, 10, 0.95) !important;
+  backdrop-filter: blur(10px);
+}
+
+.wallet-adapter-modal-container {
+  background: var(--terminal-bg) !important;
+  border: 1px solid var(--terminal-border) !important;
+  border-radius: 0 !important;
+}
+
+.wallet-adapter-modal-title {
+  color: var(--terminal-green) !important;
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+.wallet-adapter-modal-list li {
+  background: transparent !important;
+  border: 1px solid var(--terminal-border) !important;
+  border-radius: 0 !important;
+}
+
+.wallet-adapter-modal-list li:hover {
+  background: rgba(0, 255, 157, 0.1) !important;
+  border-color: var(--terminal-green) !important;
+}
+
+/* ===== SOLANA WALLET BUTTON ===== */
+.wallet-adapter-button-trigger {
+  background: rgba(0, 255, 157, 0.1) !important;
+  border: 1px solid rgba(0, 255, 157, 0.3) !important;
+  color: var(--terminal-green) !important;
+  border-radius: 0 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 0.75rem !important;
+  transition: all 0.2s !important;
+}
+
+.wallet-adapter-button-trigger:hover {
+  background: rgba(0, 255, 157, 0.2) !important;
+  border-color: var(--terminal-green) !important;
 }

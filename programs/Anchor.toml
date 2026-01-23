@@ -7,22 +7,16 @@ skip-lint = false
 
 # Program IDs - Deployed to Devnet on 2026-01-21
 [programs.localnet]
+velo = "AQgeVtAYEvigMbBW5gEiK4voELjFB94fDY9cFZqKHgZ8"
 velo_mixer = "DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc"
-velo_private_tx = "11111111111111111111111111111111"
-velo_subscription = "11111111111111111111111111111111"
-velo_stealth = "11111111111111111111111111111111"
 
 [programs.devnet]
+velo = "AQgeVtAYEvigMbBW5gEiK4voELjFB94fDY9cFZqKHgZ8"
 velo_mixer = "DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc"
-velo_private_tx = "11111111111111111111111111111111"
-velo_subscription = "11111111111111111111111111111111"
-velo_stealth = "11111111111111111111111111111111"
 
 [programs.mainnet]
+velo = "AQgeVtAYEvigMbBW5gEiK4voELjFB94fDY9cFZqKHgZ8"
 velo_mixer = "DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc"
-velo_private_tx = "11111111111111111111111111111111"
-velo_subscription = "11111111111111111111111111111111"
-velo_stealth = "11111111111111111111111111111111"
 
 [registry]
 url = "https://api.apr.dev"
@@ -36,8 +30,6 @@ test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
 
 [workspace]
 members = [
-    "velo_mixer",
-    "velo_private_tx",
-    "velo_subscription",
-    "velo_stealth"
+    "velo",
+    "velo_mixer"
 ]

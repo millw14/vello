@@ -167,6 +167,119 @@ pub mod velo {
     }
 
     /// ═══════════════════════════════════════════════════════════════════
+    /// RELAYER WITHDRAWAL - THE PRIVACY MAGIC!
+    /// ═══════════════════════════════════════════════════════════════════
+    /// 
+    /// This is the key to privacy:
+    /// - User sends note + recipient to RELAYER off-chain
+    /// - Relayer verifies note is valid (checks nullifier hasn't been used)
+    /// - Relayer submits this transaction - RELAYER is the signer!
+    /// - On Solscan: "Velo Program" transferred to recipient
+    /// - User's wallet is NOWHERE in the transaction!
+    ///
+    pub fn relayer_withdraw(
+        ctx: Context<RelayerWithdraw>,
+        nullifier_hash: [u8; 32],
+        fee: u64,
+    ) -> Result<()> {
+        let pool = &ctx.accounts.velo_pool;
+        let nullifier = &mut ctx.accounts.nullifier;
+        let denomination = pool.denomination;
+        
+        // Verify relayer is registered
+        let relayer_state = &ctx.accounts.relayer_state;
+        require!(relayer_state.is_active, VeloError::RelayerNotActive);
+        require!(
+            relayer_state.relayer == ctx.accounts.relayer.key(),
+            VeloError::UnauthorizedRelayer
+        );
+        
+        // Verify fee is reasonable (max 1% of denomination)
+        let max_fee = denomination / 100;
+        require!(fee <= max_fee, VeloError::FeeTooHigh);
+        
+        // Store nullifier to prevent double-spend
+        nullifier.hash = nullifier_hash;
+        nullifier.pool = pool.key();
+        
+        // Calculate amounts
+        let recipient_amount = denomination - fee;
+        
+        // Transfer from vault using PDA signing
+        let denomination_bytes = denomination.to_le_bytes();
+        let vault_bump = *ctx.bumps.get("velo_vault").unwrap();
+        let vault_seeds = &[
+            b"velo_vault".as_ref(),
+            denomination_bytes.as_ref(),
+            &[vault_bump],
+        ];
+        let signer_seeds = &[&vault_seeds[..]];
+        
+        // Transfer to recipient
+        let transfer_to_recipient = anchor_lang::solana_program::system_instruction::transfer(
+            &ctx.accounts.velo_vault.key(),
+            &ctx.accounts.recipient.key(),
+            recipient_amount,
+        );
+        
+        anchor_lang::solana_program::program::invoke_signed(
+            &transfer_to_recipient,
+            &[
+                ctx.accounts.velo_vault.to_account_info(),
+                ctx.accounts.recipient.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            signer_seeds,
+        )?;
+        
+        // Transfer fee to relayer
+        if fee > 0 {
+            let transfer_fee = anchor_lang::solana_program::system_instruction::transfer(
+                &ctx.accounts.velo_vault.key(),
+                &ctx.accounts.relayer.key(),
+                fee,
+            );
+            
+            anchor_lang::solana_program::program::invoke_signed(
+                &transfer_fee,
+                &[
+                    ctx.accounts.velo_vault.to_account_info(),
+                    ctx.accounts.relayer.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                signer_seeds,
+            )?;
+        }
+        
+        msg!("═══════════════════════════════════════");
+        msg!("       VELO PRIVATE WITHDRAWAL");
+        msg!("═══════════════════════════════════════");
+        msg!("VELO: {} lamports sent to recipient", recipient_amount);
+        msg!("VELO: {} lamports relayer fee", fee);
+        msg!("VELO: SENDER IDENTITY: **HIDDEN**");
+        msg!("VELO: Relayer processed withdrawal");
+        msg!("VELO: Privacy level: MAXIMUM");
+        Ok(())
+    }
+
+    /// Register a relayer (admin only initially)
+    pub fn register_relayer(ctx: Context<RegisterRelayer>) -> Result<()> {
+        let relayer_state = &mut ctx.accounts.relayer_state;
+        relayer_state.relayer = ctx.accounts.relayer.key();
+        relayer_state.total_relayed = 0;
+        relayer_state.total_fees = 0;
+        relayer_state.is_active = true;
+        relayer_state.registered_at = Clock::get()?.unix_timestamp;
+        
+        msg!("═══════════════════════════════════════");
+        msg!("       VELO RELAYER REGISTERED");
+        msg!("═══════════════════════════════════════");
+        msg!("VELO: Relayer: {}", ctx.accounts.relayer.key());
+        msg!("VELO: Status: ACTIVE");
+        Ok(())
+    }
+
+    /// ═══════════════════════════════════════════════════════════════════
     /// STEALTH ADDRESS FUNCTIONS - Maximum Privacy
     /// ═══════════════════════════════════════════════════════════════════
 
@@ -668,6 +781,82 @@ pub struct WithdrawTest<'info> {
 }
 
 /// ═══════════════════════════════════════════════════════════════════
+/// RELAYER SYSTEM - For anonymous withdrawals
+/// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Accounts)]
+#[instruction(nullifier_hash: [u8; 32], fee: u64)]
+pub struct RelayerWithdraw<'info> {
+    #[account(
+        seeds = [b"velo_pool", velo_pool.denomination.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub velo_pool: Account<'info, VeloPool>,
+    /// CHECK: PDA vault
+    #[account(
+        mut,
+        seeds = [b"velo_vault", velo_pool.denomination.to_le_bytes().as_ref()],
+        bump
+    )]
+    pub velo_vault: AccountInfo<'info>,
+    /// Nullifier - prevents double-spend
+    #[account(
+        init,
+        payer = relayer,
+        space = 8 + Nullifier::SPACE,
+        seeds = [b"nullifier", nullifier_hash.as_ref()],
+        bump
+    )]
+    pub nullifier: Account<'info, Nullifier>,
+    /// Relayer state - must be registered
+    #[account(
+        seeds = [b"relayer", relayer.key().as_ref()],
+        bump,
+        constraint = relayer_state.is_active @ VeloError::RelayerNotActive
+    )]
+    pub relayer_state: Account<'info, RelayerState>,
+    /// CHECK: Recipient of the withdrawal
+    #[account(mut)]
+    pub recipient: AccountInfo<'info>,
+    /// Relayer who submits and signs the transaction (THE KEY TO PRIVACY!)
+    #[account(mut)]
+    pub relayer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct RegisterRelayer<'info> {
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + RelayerState::SPACE,
+        seeds = [b"relayer", relayer.key().as_ref()],
+        bump
+    )]
+    pub relayer_state: Account<'info, RelayerState>,
+    /// CHECK: The relayer wallet being registered
+    pub relayer: AccountInfo<'info>,
+    /// Must be program authority (for now)
+    #[account(mut)]
+    pub authority: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+/// Relayer state - tracks a registered relayer
+#[account]
+pub struct RelayerState {
+    pub relayer: Pubkey,          // 32 bytes - relayer's public key
+    pub total_relayed: u64,       // 8 bytes - total transactions relayed
+    pub total_fees: u64,          // 8 bytes - total fees earned
+    pub is_active: bool,          // 1 byte - can this relayer operate?
+    pub registered_at: i64,       // 8 bytes - when registered
+}
+
+impl RelayerState {
+    pub const SPACE: usize = 32 + 8 + 8 + 1 + 8;
+}
+
+/// ═══════════════════════════════════════════════════════════════════
 /// STEALTH ADDRESS CONTEXTS
 /// ═══════════════════════════════════════════════════════════════════
 
@@ -968,4 +1157,12 @@ pub enum VeloError {
     ShuffleRateLimited,
     #[msg("Invalid decoy vault index")]
     InvalidDecoyVaultIndex,
+    #[msg("Relayer is not active")]
+    RelayerNotActive,
+    #[msg("Unauthorized relayer")]
+    UnauthorizedRelayer,
+    #[msg("Fee too high (max 1%)")]
+    FeeTooHigh,
+    #[msg("Invalid note/proof")]
+    InvalidNote,
 }

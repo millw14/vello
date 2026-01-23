@@ -29,16 +29,10 @@ export default function Home() {
 
         <div className="flex items-center gap-4">
           <Link 
-            href="/login"
-            className="px-5 py-2.5 text-[#00ff9d] text-sm font-mono hover:underline transition-all"
-          >
-            LOGIN
-          </Link>
-          <Link 
-            href="/signup"
+            href="/app"
             className="px-6 py-2.5 bg-[#00ff9d] text-[#0a0a0a] text-sm font-bold font-mono hover:shadow-[0_0_20px_rgba(0,255,157,0.5)] transition-all"
           >
-            {'>'} GET_STARTED
+            {'>'} LAUNCH_APP
           </Link>
         </div>
       </nav>

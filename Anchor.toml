@@ -3,6 +3,7 @@ seeds = false
 skip-lint = false
 
 [programs.devnet]
+velo = "AQgeVtAYEvigMbBW5gEiK4voELjFB94fDY9cFZqKHgZ8"
 velo_mixer = "DSQt1z5wNcmE5h2XL1K1QAWHy28iJufg52aGy3kn8pEc"
 
 [registry]
@@ -11,3 +12,6 @@ url = "https://api.apr.dev"
 [provider]
 cluster = "devnet"
 wallet = "~/.config/solana/id.json"
+
+[workspace]
+members = ["programs/velo", "programs/velo_mixer"]

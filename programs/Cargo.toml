@@ -1,10 +1,9 @@
 [workspace]
 members = [
-    "velo_mixer",
-    "velo_private_tx", 
-    "velo_subscription",
-    "velo_stealth"
+    "velo",
+    "velo_mixer"
 ]
+# Other programs excluded due to anchor-spl dependency conflicts
 resolver = "2"
 
 [profile.release]
