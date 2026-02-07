@@ -9,14 +9,16 @@
   --font-mono: var(--font-jetbrains);
 }
 
-/* ===== TERMINAL THEME ===== */
+/* ===== THEME ===== */
 :root {
-  --terminal-bg: #0a0a0a;
-  --terminal-green: #00ff9d;
-  --terminal-cyan: #00d4ff;
-  --terminal-dim: #00ff9d60;
-  --terminal-border: #00ff9d30;
-  --radius: 0.5rem;
+  --velo-bg: #060609;
+  --velo-green: #00ff9d;
+  --velo-cyan: #00e5c7;
+  --velo-dim: #00ff9d50;
+  --velo-border: #ffffff0a;
+  --velo-card: #0a0a10;
+  --velo-card-hover: #0e0e16;
+  --radius: 0.75rem;
 }
 
 * {
@@ -31,361 +33,148 @@ html {
 
 body {
   font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', Consolas, monospace;
-  background: var(--terminal-bg);
-  color: var(--terminal-green);
+  background: var(--velo-bg);
+  color: #e0e0e0;
   overflow-x: hidden;
 }
 
-/* ===== ANIMATIONS ===== */
-@keyframes scanline {
-  0% { top: -100%; }
-  100% { top: 100%; }
+/* ===== AMBIENT BACKGROUND ===== */
+.velo-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: var(--velo-bg);
 }
 
+.velo-bg::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  left: -10%;
+  width: 60%;
+  height: 60%;
+  background: radial-gradient(circle, rgba(0, 255, 157, 0.07) 0%, transparent 70%);
+  filter: blur(80px);
+  animation: drift-1 20s ease-in-out infinite alternate;
+}
+
+.velo-bg::after {
+  content: '';
+  position: absolute;
+  bottom: -20%;
+  right: -10%;
+  width: 50%;
+  height: 50%;
+  background: radial-gradient(circle, rgba(0, 229, 199, 0.06) 0%, transparent 70%);
+  filter: blur(80px);
+  animation: drift-2 25s ease-in-out infinite alternate;
+}
+
+.velo-bg-accent {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40%;
+  height: 40%;
+  background: radial-gradient(circle, rgba(0, 255, 157, 0.03) 0%, transparent 70%);
+  filter: blur(100px);
+  pointer-events: none;
+}
+
+/* Subtle noise texture overlay */
+.velo-noise {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.015;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* Vignette overlay to soften matrix edges and clear center */
+.velo-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: 
+    radial-gradient(ellipse at center, rgba(6, 6, 9, 0.55) 0%, transparent 50%),
+    radial-gradient(ellipse at center, transparent 30%, rgba(6, 6, 9, 0.85) 100%);
+}
+
+@keyframes drift-1 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(5%, 10%) scale(1.1); }
+}
+
+@keyframes drift-2 {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(-5%, -8%) scale(1.05); }
+}
+
+/* ===== ANIMATIONS ===== */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
 
-@keyframes flicker {
-  0%, 100% { opacity: 1; }
-  92% { opacity: 1; }
-  93% { opacity: 0.8; }
-  94% { opacity: 1; }
-}
-
-@keyframes glow {
-  0%, 100% { 
-    text-shadow: 0 0 10px var(--terminal-green), 0 0 20px var(--terminal-green), 0 0 30px var(--terminal-green);
-  }
-  50% { 
-    text-shadow: 0 0 5px var(--terminal-green), 0 0 10px var(--terminal-green);
-  }
-}
-
-@keyframes typing {
-  from { width: 0; }
-  to { width: 100%; }
-}
-
-@keyframes spin-slow {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@keyframes slide-in-from-top {
-  from { 
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to { 
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes slide-in-from-bottom {
-  from { 
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to { 
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-fast {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-/* ===== TERMINAL CONTAINER ===== */
-.terminal-container {
-  min-height: 100vh;
-  background: var(--terminal-bg);
-  position: relative;
-  overflow: hidden;
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 
-.terminal-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: 
-    repeating-linear-gradient(
-      0deg,
-      rgba(0, 255, 157, 0.03) 0px,
-      rgba(0, 255, 157, 0.03) 1px,
-      transparent 1px,
-      transparent 2px
-    );
-  pointer-events: none;
-  z-index: 1;
+/* ===== CARD STYLES ===== */
+.velo-card {
+  background: rgba(8, 8, 14, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius);
+  backdrop-filter: blur(20px);
+  transition: all 0.25s ease;
 }
 
-.terminal-container::after {
-  content: '';
-  position: absolute;
-  top: -100%;
-  left: 0;
-  right: 0;
-  height: 100%;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    rgba(0, 255, 157, 0.05) 50%,
-    transparent 100%
-  );
-  animation: scanline 8s linear infinite;
-  pointer-events: none;
-  z-index: 2;
-}
-
-/* ===== BENTO GRID ===== */
-.bento-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-}
-
-@media (max-width: 1024px) {
-  .bento-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .col-span-3 {
-    grid-column: span 2;
-  }
-}
-
-@media (max-width: 640px) {
-  .bento-grid {
-    grid-template-columns: 1fr;
-  }
-  .col-span-2,
-  .col-span-3 {
-    grid-column: span 1;
-  }
-}
-
-.col-span-2 {
-  grid-column: span 2;
-}
-
-.col-span-3 {
-  grid-column: span 3;
-}
-
-/* ===== BENTO ITEM ===== */
-.bento-item {
-  background: rgba(0, 255, 157, 0.03);
-  border: 1px solid var(--terminal-border);
-  padding: 1.5rem;
-  position: relative;
-  transition: all 0.3s ease;
-}
-
-.bento-item:hover {
-  background: rgba(0, 255, 157, 0.08);
-  border-color: var(--terminal-green);
-  box-shadow: 
-    0 0 20px rgba(0, 255, 157, 0.1),
-    inset 0 0 20px rgba(0, 255, 157, 0.05);
-}
-
-.bento-item::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, var(--terminal-green), transparent);
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.bento-item:hover::before {
-  opacity: 1;
-}
-
-/* ===== TYPOGRAPHY ===== */
-.blinking-cursor::after {
-  content: '_';
-  animation: blink 1s step-end infinite;
-}
-
-.terminal-glow {
-  animation: glow 2s ease-in-out infinite;
-}
-
-.terminal-flicker {
-  animation: flicker 4s linear infinite;
+.velo-card:hover {
+  background: rgba(10, 10, 18, 0.9);
+  border-color: rgba(0, 255, 157, 0.1);
+  box-shadow: 0 0 30px rgba(0, 255, 157, 0.03);
 }
 
 /* ===== CUSTOM SCROLLBAR ===== */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--terminal-bg);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--terminal-border);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--terminal-green);
+  background: rgba(0, 255, 157, 0.3);
 }
 
 /* ===== SELECTION ===== */
 ::selection {
-  background: var(--terminal-green);
-  color: var(--terminal-bg);
-}
-
-/* ===== UTILITIES ===== */
-.text-terminal {
-  color: var(--terminal-green);
-}
-
-.text-terminal-dim {
-  color: var(--terminal-dim);
-}
-
-.text-terminal-cyan {
-  color: var(--terminal-cyan);
-}
-
-.bg-terminal {
-  background: var(--terminal-bg);
-}
-
-.border-terminal {
-  border-color: var(--terminal-border);
-}
-
-.border-terminal-bright {
-  border-color: var(--terminal-green);
-}
-
-/* Button styles */
-.terminal-btn {
-  background: transparent;
-  border: 1px solid var(--terminal-green);
-  color: var(--terminal-green);
-  padding: 0.75rem 1.5rem;
-  font-family: inherit;
-  font-size: inherit;
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-  overflow: hidden;
-}
-
-.terminal-btn:hover {
-  background: var(--terminal-green);
-  color: var(--terminal-bg);
-  box-shadow: 0 0 20px rgba(0, 255, 157, 0.5);
-}
-
-.terminal-btn-filled {
-  background: var(--terminal-green);
-  color: var(--terminal-bg);
-  border: none;
-}
-
-.terminal-btn-filled:hover {
-  box-shadow: 0 0 30px rgba(0, 255, 157, 0.7);
-}
-
-/* Input styles */
-.terminal-input {
-  background: transparent;
-  border: 1px solid var(--terminal-border);
-  color: var(--terminal-green);
-  padding: 0.75rem 1rem;
-  font-family: inherit;
-  width: 100%;
-  outline: none;
-  transition: all 0.2s;
-}
-
-.terminal-input:focus {
-  border-color: var(--terminal-green);
-  box-shadow: 0 0 10px rgba(0, 255, 157, 0.2);
-}
-
-.terminal-input::placeholder {
-  color: var(--terminal-dim);
-}
-
-/* Status indicators */
-.status-online {
-  color: var(--terminal-green);
-}
-
-.status-offline {
-  color: #ff4444;
-}
-
-.status-pending {
-  color: #ffaa00;
-}
-
-@layer base {
-  * {
-    @apply border-[var(--terminal-border)];
-  }
-}
-
-/* ===== ANIMATION UTILITIES ===== */
-.animate-spin-slow {
-  animation: spin-slow 20s linear infinite;
-}
-
-.animate-in {
-  animation-duration: 300ms;
-  animation-fill-mode: both;
-}
-
-.slide-in-from-top-2 {
-  animation-name: slide-in-from-top;
-}
-
-.slide-in-from-bottom-2 {
-  animation-name: slide-in-from-bottom;
-}
-
-.fade-in {
-  animation-name: fade-in;
-}
-
-.duration-300 {
-  animation-duration: 300ms;
-}
-
-/* ===== GRADIENT UTILITIES ===== */
-.bg-gradient-radial {
-  background: radial-gradient(var(--tw-gradient-stops));
-}
-
-/* ===== BACKDROP BLUR ===== */
-.backdrop-blur-xs {
-  backdrop-filter: blur(2px);
-}
-
-/* ===== FOCUS RING ===== */
-.focus-ring-terminal:focus {
-  outline: none;
-  box-shadow: 0 0 0 2px var(--terminal-green);
+  background: var(--velo-green);
+  color: #000;
 }
 
 /* ===== WALLET ADAPTER OVERRIDES ===== */
@@ -394,44 +183,49 @@ body {
 }
 
 .wallet-adapter-modal-wrapper {
-  background: rgba(10, 10, 10, 0.95) !important;
-  backdrop-filter: blur(10px);
+  background: rgba(6, 6, 9, 0.9) !important;
+  backdrop-filter: blur(20px);
 }
 
 .wallet-adapter-modal-container {
-  background: var(--terminal-bg) !important;
-  border: 1px solid var(--terminal-border) !important;
-  border-radius: 0 !important;
+  background: #0a0a10 !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 12px !important;
 }
 
 .wallet-adapter-modal-title {
-  color: var(--terminal-green) !important;
+  color: var(--velo-green) !important;
   font-family: 'JetBrains Mono', monospace !important;
 }
 
 .wallet-adapter-modal-list li {
   background: transparent !important;
-  border: 1px solid var(--terminal-border) !important;
-  border-radius: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-radius: 8px !important;
 }
 
 .wallet-adapter-modal-list li:hover {
-  background: rgba(0, 255, 157, 0.1) !important;
-  border-color: var(--terminal-green) !important;
+  background: rgba(0, 255, 157, 0.06) !important;
+  border-color: rgba(0, 255, 157, 0.15) !important;
 }
 
-/* ===== SOLANA WALLET BUTTON ===== */
 .wallet-adapter-button-trigger {
-  background: rgba(0, 255, 157, 0.1) !important;
-  border: 1px solid rgba(0, 255, 157, 0.3) !important;
-  color: var(--terminal-green) !important;
-  border-radius: 0 !important;
+  background: rgba(0, 255, 157, 0.06) !important;
+  border: 1px solid rgba(0, 255, 157, 0.15) !important;
+  color: var(--velo-green) !important;
+  border-radius: 8px !important;
   font-family: 'JetBrains Mono', monospace !important;
   font-size: 0.75rem !important;
   transition: all 0.2s !important;
 }
 
 .wallet-adapter-button-trigger:hover {
-  background: rgba(0, 255, 157, 0.2) !important;
-  border-color: var(--terminal-green) !important;
+  background: rgba(0, 255, 157, 0.12) !important;
+  border-color: rgba(0, 255, 157, 0.25) !important;
+}
+
+@layer base {
+  * {
+    @apply border-[rgba(255,255,255,0.04)];
+  }
 }

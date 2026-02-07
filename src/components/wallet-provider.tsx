@@ -36,9 +36,9 @@ export const SolanaWalletProvider: FC<Props> = ({ children }) => {
 
   // Handle wallet errors gracefully
   const onError = useCallback((error: WalletError) => {
+    // Suppress "not ready" errors (no wallet extension installed)
+    if (error.name === 'WalletNotReadyError') return;
     console.warn('Wallet error:', error.name, error.message);
-    // Don't throw - just log the error
-    // Common errors: WalletNotReadyError, WalletConnectionError
   }, []);
 
   return (

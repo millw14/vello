@@ -18,6 +18,21 @@ export const metadata: Metadata = {
   title: "Velo | Private Solana Transfers",
   description: "Private transfers on Solana with hidden amounts. Connect your wallet, deposit, and send privately.",
   keywords: ["Solana", "Privacy", "Mixer", "Private Transfers", "Crypto"],
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
+  openGraph: {
+    title: "Velo | Private Solana Transfers",
+    description: "Send SOL with hidden amounts. Your balance, your privacy, your control.",
+    type: "website",
+    siteName: "Velo",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Velo | Private Solana Transfers",
+    description: "Send SOL with hidden amounts. Your balance, your privacy, your control.",
+  },
 };
 
 export default function RootLayout({

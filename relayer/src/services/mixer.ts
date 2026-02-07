@@ -134,8 +134,8 @@ export class MixerRelayer {
         secretLen: secret.length,
       });
 
-      // Recompute commitment - ORDER: secret FIRST, then nullifier (matches client)
-      const combined = Buffer.concat([Buffer.from(secret), Buffer.from(nullifier)]);
+      // Recompute commitment - ORDER: nullifier FIRST, then secret (matches client generateVeloNote)
+      const combined = Buffer.concat([Buffer.from(nullifier), Buffer.from(secret)]);
       const computedCommitment = crypto.createHash('sha256').update(combined).digest('hex');
 
       logger.info('Computed commitment:', {
@@ -146,11 +146,6 @@ export class MixerRelayer {
 
       // Verify it matches
       if (computedCommitment !== request.noteCommitment) {
-        // Try other order just in case
-        const combinedAlt = Buffer.concat([Buffer.from(nullifier), Buffer.from(secret)]);
-        const computedAlt = crypto.createHash('sha256').update(combinedAlt).digest('hex');
-        logger.info('Alt order commitment:', { computed: computedAlt });
-        
         return { valid: false, error: `Invalid note: commitment mismatch. Expected ${request.noteCommitment.slice(0,16)}..., got ${computedCommitment.slice(0,16)}...` };
       }
 
