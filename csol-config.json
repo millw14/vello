@@ -1,0 +1,10 @@
+{
+  "mintAddress": "5YYiu4CRi2qiW1reQgq3j5mFbc3WpXz6dJZrGaxFwQZN",
+  "authority": "2fuscGagY6Py69DNGyuC6C16b9oZGGxLDx6F9vsWhtiX",
+  "decimals": 9,
+  "feeBasisPoints": 50,
+  "maxFee": "1000000000",
+  "network": "devnet",
+  "createdAt": 1769464822121,
+  "txSignature": "5R4o9oYDh6UF2Xa6w23xuytTZpVcAC54nzPMXSyaGmD9H1Jao4gFxDuBrbS4gfYZerbhJpYggFA1mS8Tr2cq42Wx"
+}
