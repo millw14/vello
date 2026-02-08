@@ -15,6 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://velo.up.railway.app"),
   title: "Velo | Private Solana Transfers",
   description: "Private transfers on Solana with hidden amounts. Connect your wallet, deposit, and send privately.",
   keywords: ["Solana", "Privacy", "Mixer", "Private Transfers", "Crypto"],

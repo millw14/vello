@@ -41,7 +41,8 @@ async function poseidonHash(inputs: bigint[]): Promise<bigint> {
   // This is a placeholder that uses a simple hash
   const encoder = new TextEncoder();
   const data = inputs.map(i => i.toString()).join(',');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(data));
+  const encoded = encoder.encode(data);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded.buffer as ArrayBuffer);
   const hashArray = new Uint8Array(hashBuffer);
   
   let result = BigInt(0);
