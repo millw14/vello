@@ -2,7 +2,6 @@
 
 import Spline from '@splinetool/react-spline';
 import Link from 'next/link';
-import { Zap } from 'lucide-react';
 
 export default function Home() {
   return (
@@ -20,22 +19,6 @@ export default function Home() {
         <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,rgba(0,255,157,0.03)_0px,rgba(0,255,157,0.03)_1px,transparent_1px,transparent_2px)]" />
       </div>
 
-      {/* Navigation */}
-      <nav className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-8 py-6">
-        <div className="flex items-center gap-2 text-[#00ff9d]">
-          <Zap className="w-8 h-8" />
-          <span className="text-2xl font-bold">VELO</span>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <Link 
-            href="/app"
-            className="px-6 py-2.5 bg-[#00ff9d] text-[#0a0a0a] text-sm font-bold font-mono hover:shadow-[0_0_20px_rgba(0,255,157,0.5)] transition-all"
-          >
-            {'>'} LAUNCH_APP
-          </Link>
-        </div>
-      </nav>
     </main>
   );
 }
