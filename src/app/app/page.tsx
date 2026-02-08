@@ -8,7 +8,7 @@ import {
   Shield, ArrowDownToLine, ArrowUpFromLine, Send, 
   RefreshCw, Copy, Check, ExternalLink, EyeOff,
   Eye, AlertCircle, CheckCircle2, Loader2, 
-  ArrowRightLeft, Lock, Droplets
+  ArrowRightLeft, Lock, Droplets, ShieldOff
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -725,6 +725,49 @@ export default function VeloApp() {
                   <div className="flex items-center gap-2.5 text-[#00ff9d]/60 font-mono text-xs pt-2">
                     <Shield size={14} />
                     <span>Fixed denominations = maximum privacy</span>
+                  </div>
+                </div>
+
+                {/* Encrypted Amounts - Coming Soon */}
+                <div className="velo-card p-5 opacity-60 relative overflow-hidden">
+                  {/* Subtle gradient accent */}
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-[60px] pointer-events-none" />
+
+                  <div className="relative flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/15 flex items-center justify-center shrink-0 mt-0.5">
+                      <ShieldOff size={18} className="text-purple-400" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2.5 mb-1.5">
+                        <h3 className="text-sm font-semibold text-white">Encrypted Amounts</h3>
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/20 uppercase tracking-wider">
+                          Coming Soon
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-gray-400 leading-relaxed mb-3">
+                        Hide transfer amounts on-chain using Token-2022 Confidential Transfers. 
+                        Amounts will appear as encrypted blobs on Solscan instead of visible numbers.
+                      </p>
+
+                      <div className="flex items-start gap-2 p-3 rounded-md bg-white/[0.02] border border-white/[0.03] mb-3">
+                        <Lock size={12} className="text-gray-500 shrink-0 mt-0.5" />
+                        <p className="text-[11px] text-gray-500 leading-relaxed">
+                          Solana&apos;s ZK ElGamal Proof program is currently paused for a security audit. 
+                          When re-enabled, this feature will activate automatically.
+                        </p>
+                      </div>
+
+                      <a
+                        href="https://solana.com/docs/tokens/extensions/confidential-transfer"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-purple-400/80 hover:text-purple-400 font-mono transition-colors"
+                      >
+                        Learn more about Confidential Transfers <ExternalLink size={11} />
+                      </a>
+                    </div>
                   </div>
                 </div>
               </div>

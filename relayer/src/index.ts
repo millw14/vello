@@ -321,8 +321,12 @@ async function initialize() {
     logger.info(`Connected to Solana: ${config.rpcUrl}`);
     logger.info(`Solana version: ${version['solana-core']}`);
 
-    // Load or generate relayer keypair
-    if (fs.existsSync(config.relayerKeypairPath)) {
+    // Load relayer keypair: env variable (Railway) > file > generate new
+    if (process.env.RELAYER_KEYPAIR) {
+      const keypairData = JSON.parse(process.env.RELAYER_KEYPAIR);
+      relayerKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
+      logger.info('Loaded relayer keypair from RELAYER_KEYPAIR env');
+    } else if (fs.existsSync(config.relayerKeypairPath)) {
       const keypairData = JSON.parse(fs.readFileSync(config.relayerKeypairPath, 'utf-8'));
       relayerKeypair = Keypair.fromSecretKey(Uint8Array.from(keypairData));
       logger.info('Loaded relayer keypair from file');

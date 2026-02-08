@@ -5,6 +5,14 @@
 import { PublicKey } from '@solana/web3.js';
 
 // ═══════════════════════════════════════════════════════════════════
+// FEATURE FLAG
+// ═══════════════════════════════════════════════════════════════════
+// Set to true when Solana re-enables the ZK ElGamal Proof program.
+// This gates all Token-2022 Confidential Transfer functionality.
+// Track status: https://solana.com/developers/guides/token-extensions/confidential-transfer
+export const CONFIDENTIAL_TRANSFERS_ENABLED = false;
+
+// ═══════════════════════════════════════════════════════════════════
 // NETWORK CONFIGURATION
 // ═══════════════════════════════════════════════════════════════════
 

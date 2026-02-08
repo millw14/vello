@@ -22,7 +22,7 @@ import {
   createInitializeMintInstruction,
   getMintLen,
   createInitializeTransferFeeConfigInstruction,
-  createInitializePermanentDelegateInstruction,
+  createInitializeConfidentialTransferMintInstruction,
 } from '@solana/spl-token';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import * as path from 'path';
@@ -146,12 +146,17 @@ async function main() {
   console.log('Mint address:', mintKeypair.publicKey.toBase58());
 
   // Calculate space needed for mint with extensions
-  // Using TransferFeeConfig for now (Confidential Transfer requires more setup)
-  const extensions = [ExtensionType.TransferFeeConfig];
+  // TransferFeeConfig: enables fee collection on transfers
+  // ConfidentialTransferMint: enables encrypted amounts (activates when Solana enables ZK program)
+  const extensions = [
+    ExtensionType.TransferFeeConfig,
+    ExtensionType.ConfidentialTransferMint,
+  ];
   const mintLen = getMintLen(extensions);
   
-  console.log('Extensions: TransferFeeConfig');
+  console.log('Extensions: TransferFeeConfig, ConfidentialTransferMint');
   console.log('Account size:', mintLen, 'bytes');
+  console.log('Note: ConfidentialTransfer will activate when Solana enables ZK ElGamal program');
 
   // Get rent
   const lamports = await connection.getMinimumBalanceForRentExemption(mintLen);
@@ -183,7 +188,21 @@ async function main() {
     )
   );
 
-  // 3. Initialize mint
+  // 3. Initialize confidential transfer mint extension
+  // autoApproveNewAccounts: true = users don't need manual approval
+  // auditorElgamalPubkey: null = no auditor (fully private)
+  // This extension is ready but won't function until Solana enables the ZK ElGamal program
+  transaction.add(
+    createInitializeConfidentialTransferMintInstruction(
+      mintKeypair.publicKey,
+      authority.publicKey,  // Confidential transfer authority
+      true,                 // Auto-approve new accounts
+      null,                 // No auditor ElGamal pubkey
+      TOKEN_2022_PROGRAM_ID
+    )
+  );
+
+  // 4. Initialize mint
   transaction.add(
     createInitializeMintInstruction(
       mintKeypair.publicKey,
@@ -225,6 +244,9 @@ async function main() {
       decimals: DECIMALS,
       feeBasisPoints: FEE_BASIS_POINTS,
       maxFee: MAX_FEE.toString(),
+      extensions: ['TransferFeeConfig', 'ConfidentialTransferMint'],
+      confidentialTransferReady: true,
+      confidentialTransferActive: false, // Activates when Solana enables ZK ElGamal program
       network: NETWORK,
       createdAt: Date.now(),
       txSignature: signature,
